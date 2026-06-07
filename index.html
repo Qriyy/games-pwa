@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>棋牌乐园</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"Microsoft YaHei",sans-serif;background:#0a0a1a;color:#f5e6c8;display:flex;align-items:center;justify-content:center;min-height:100vh}
+.container{text-align:center;padding:40px}
+h1{font-size:48px;margin-bottom:10px;background:linear-gradient(135deg,#d4a545,#f2c94c);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.subtitle{color:#a8b8a0;font-size:18px;margin-bottom:40px}
+.games{display:flex;gap:20px;justify-content:center;flex-wrap:wrap}
+.game-card{background:linear-gradient(135deg,#1b3a2d,#0f2218);border:1px solid #2a4a38;border-radius:16px;padding:30px 40px;text-align:center;cursor:pointer;transition:all 0.3s;text-decoration:none;color:#f5e6c8}
+.game-card:hover{transform:translateY(-4px);border-color:#d4a545;box-shadow:0 8px 24px rgba(212,165,69,0.2)}
+.game-card .icon{font-size:64px;margin-bottom:15px}
+.game-card h2{font-size:24px;margin-bottom:8px;color:#f5e6c8}
+.game-card p{color:#a8b8a0;font-size:14px}
+.game-card .status{display:inline-block;padding:4px 12px;border-radius:20px;font-size:12px;margin-top:10px}
+.game-card .play{background:#c43b2a;color:#fff}
+.game-card .soon{background:#3a3a3a;color:#a8b8a0}
+footer{margin-top:40px;color:#5a6a58;font-size:13px}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🀄 棋牌乐园</h1>
+  <p class="subtitle">手机电脑都能玩 · 随时随地</p>
+  <div class="games">
+    <a class="game-card" href="hongzhong-mahjong/">
+      <div class="icon">🀄</div>
+      <h2>红中麻将</h2>
+      <p>4人对战 · 红中万能牌</p>
+      <span class="status play">开始游戏</span>
+    </a>
+    <div class="game-card">
+      <div class="icon">⚫</div>
+      <h2>五子棋</h2>
+      <p>人机对战 · 三种难度</p>
+      <span class="status soon">即将上线</span>
+    </div>
+    <div class="game-card">
+      <div class="icon">♟️</div>
+      <h2>中国象棋</h2>
+      <p>经典象棋 · AI对手</p>
+      <span class="status soon">即将上线</span>
+    </div>
+  </div>
+  <footer>棋牌乐园 · Powered by GitHub Pages</footer>
+</div>
+</body>
+</html>
