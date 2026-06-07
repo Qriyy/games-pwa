@@ -69,15 +69,13 @@ window.UI = (function() {
 
   function getPointerPos(e) {
     const rect = canvas.getBoundingClientRect();
-    const touch = e.touches ? e.touches[0] : e;
     return {
-      x: touch.clientX - rect.left,
-      y: touch.clientY - rect.top
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top
     };
   }
 
   function handleClick(e) {
-    e.preventDefault();
     const st = s();
     if (st.phase !== 'playerTurn') return;
 
@@ -104,29 +102,9 @@ window.UI = (function() {
     }
   }
 
-  let touchHandled = false; // 防重复标志
-
   function setupInputHandlers() {
-    // 桌面端点击
-    canvas.addEventListener('click', function(e) {
-      if (touchHandled) { touchHandled = false; return; }
-      handleClick(e);
-    });
-    // 触摸：reset 标志 → 处理触摸 → 稍后click进来时被拦截
-    canvas.addEventListener('touchstart', function() {
-      touchHandled = false;
-    }, { passive: true });
-    canvas.addEventListener('touchend', function(e) {
-      e.preventDefault();
-      touchHandled = true;
-      const touch = e.changedTouches[0];
-      if (!touch) return;
-      handleClick({
-        clientX: touch.clientX,
-        clientY: touch.clientY,
-        preventDefault: () => {},
-      });
-    }, { passive: false });
+    // 用 pointerdown 统一处理鼠标+触摸
+    canvas.addEventListener('pointerdown', handleClick);
 
     // 胡牌按钮
     document.getElementById('btnHu').addEventListener('click', () => {
