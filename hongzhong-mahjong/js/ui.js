@@ -191,11 +191,12 @@ window.UI = (function() {
   function init() {
     setupInputHandlers();
     window.Renderer.resize();
-    updateScoreBar();
     setStatus('红中麻将');
 
     window.state.dealerIdx = Math.floor(Math.random() * 4);
     setTimeout(() => {
+      // 隐藏顶部状态栏
+      document.getElementById('status-bar').classList.add('hide');
       startNewGame();
     }, 300);
   }

@@ -18,10 +18,11 @@ window.Constants = (function() {
   // ====== 专业配色方案（雀魂风格） ======
   const C = {
     BG:             '#0D1117',       // 深色背景
-    TABLE_PRIMARY:  '#1B5E20',       // 桌面主色（深绿）
-    TABLE_LIGHT:    '#2E7D32',       // 桌面亮区
-    TABLE_EDGE:     '#143A17',       // 桌面边缘
-    TABLE_BORDER:   '#4E342E',       // 桌边木框
+    TABLE_PRIMARY:  '#0D4A14',       // 桌面主色（深草绿）
+    TABLE_LIGHT:    '#1A7A24',       // 桌面亮区（翠绿中心）
+    TABLE_EDGE:     '#083210',       // 桌面边缘（暗绿）
+    TABLE_BORDER:   '#5D4037',       // 桌边木框（胡桃木色）
+    TABLE_FRAME:    '#3E2723',       // 外框深木色
     TABLE_SHINE:    'rgba(255,255,255,0.03)', // 桌面纹理
     PANEL_BG:       '#131B26',       // 玩家面板背景
     PANEL_BORDER:   '#2A3A4A',       // 面板边框
@@ -64,8 +65,8 @@ window.Constants = (function() {
       OVERLAP:      0.10,     // 手牌重叠比例（仅10%，约5-6px）
       TILE_W:       50,       // 玩家手牌宽度
       TILE_H:       67,       // 玩家手牌高度
-      DISCARD_W:    26,       // 弃牌宽度
-      DISCARD_H:    35,       // 弃牌高度
+      DISCARD_W:    32,       // 弃牌宽度（加大）
+      DISCARD_H:    43,       // 弃牌高度（加大）
       AI_TILE_W:    20,       // AI牌背宽度
       AI_TILE_H:    27,       // AI牌背高度
       MELD_W:       18,       // 副露牌宽度

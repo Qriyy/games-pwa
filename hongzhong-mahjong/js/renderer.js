@@ -677,24 +677,58 @@ window.Renderer = (function() {
     const cy = topY + tableH / 2;
     const tw = W * 0.94;
     const th = tableH * 0.92;
+    const lp = LAYOUT.PORTRAIT;
 
-    // ——— 桌面背景 ———
+    // ====== 桌框（胡桃木） ======
     ctx.save();
-    ctx.shadowColor = 'rgba(0,0,0,0.4)';
-    ctx.shadowBlur = 12;
-    drawRoundedRect(cx - tw / 2, cy - th / 2, tw, th, 10);
-    const tableGrad = ctx.createRadialGradient(cx, cy, 5, cx, cy, tw / 2);
+    ctx.shadowColor = 'rgba(0,0,0,0.5)';
+    ctx.shadowBlur = 16;
+    ctx.shadowOffsetY = 4;
+    drawRoundedRect(cx - tw / 2, cy - th / 2, tw, th, 12);
+    ctx.fillStyle = C.TABLE_FRAME;
+    ctx.fill();
+    ctx.restore();
+
+    // 框内收边
+    const borderW = 5 * sc;
+    const innerX = cx - tw / 2 + borderW;
+    const innerY = cy - th / 2 + borderW;
+    const innerW = tw - borderW * 2;
+    const innerH = th - borderW * 2;
+
+    // ====== 绒面桌布 ======
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.3)';
+    ctx.shadowBlur = 8;
+    drawRoundedRect(innerX, innerY, innerW, innerH, 8);
+    const tableGrad = ctx.createRadialGradient(cx, cy, innerW * 0.05, cx, cy, innerW * 0.55);
     tableGrad.addColorStop(0, C.TABLE_LIGHT);
-    tableGrad.addColorStop(0.6, C.TABLE_PRIMARY);
+    tableGrad.addColorStop(0.35, C.TABLE_PRIMARY);
+    tableGrad.addColorStop(0.75, '#0A3511');
     tableGrad.addColorStop(1, C.TABLE_EDGE);
     ctx.fillStyle = tableGrad;
     ctx.fill();
-    ctx.strokeStyle = C.TABLE_BORDER;
-    ctx.lineWidth = 3;
+    ctx.restore();
+
+    // 绒面纹理斜线
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,0.02)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let i = innerX - innerH; i < innerX + innerW; i += 18 * sc) {
+      ctx.moveTo(i, innerY);
+      ctx.lineTo(i + innerH, innerY + innerH);
+    }
     ctx.stroke();
     ctx.restore();
 
-    // ——— 弃牌堆 ———
+    // 内边框
+    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+    ctx.lineWidth = 1;
+    drawRoundedRect(innerX, innerY, innerW, innerH, 8);
+    ctx.stroke();
+
+    // ====== 弃牌堆 ======
     const allDiscards = [];
     for (let p = 0; p < 4; p++) {
       for (const d of st.discards[p]) {
@@ -702,51 +736,60 @@ window.Renderer = (function() {
       }
     }
 
-    const lp = LAYOUT.PORTRAIT;
     const dtw = lp.DISCARD_W * sc;
     const dth = lp.DISCARD_H * sc;
     const cols = 6;
     const gap = 2;
-    const rows = Math.min(Math.ceil(allDiscards.length / cols), 4);
+    const maxRows = 4;
+    const rows = Math.min(Math.ceil(allDiscards.length / cols), maxRows);
     const zoneW = cols * (dtw + gap);
     const zoneH = rows * (dth + gap);
-    const startX = cx - zoneW / 2;
-    const startY = cy - zoneH / 2 - 4 * sc;
 
     if (allDiscards.length > 0) {
-      for (let i = 0; i < allDiscards.length && i < 24; i++) {
+      const startX = cx - zoneW / 2;
+      // 弃牌区放在桌面上半部分
+      const startY = cy - zoneH / 2 - tableH * 0.12;
+      for (let i = 0; i < allDiscards.length && i < cols * maxRows; i++) {
         const row = Math.floor(i / cols);
         const col = i % cols;
         drawTile(startX + col * (dtw + gap), startY + row * (dth + gap), dtw, dth, allDiscards[i].tile, true, false, false);
       }
     } else {
-      ctx.fillStyle = 'rgba(255,255,255,0.06)';
-      ctx.font = `${Math.floor(14 * sc)}px "Microsoft YaHei", sans-serif`;
+      // 空桌提示
+      ctx.fillStyle = 'rgba(255,255,255,0.08)';
+      ctx.font = `${Math.floor(16 * sc)}px "Microsoft YaHei", serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('红中麻将', cx, cy - 10 * sc);
-      ctx.font = `${Math.floor(10 * sc)}px "Microsoft YaHei", sans-serif`;
-      ctx.fillStyle = 'rgba(255,255,255,0.04)';
-      ctx.fillText('点击"新局"开始', cx, cy + 12 * sc);
+      ctx.fillText('红中', cx, cy - 4 * sc);
     }
 
-    // ——— 牌墙进度条（底部） ———
+    // ====== 牌墙（醒目大条） ======
     const remaining = st.deck.length;
-    const barW = Math.min(80 * sc, tw * 0.25);
-    const barH = 5 * sc;
+    const barW = Math.min(120 * sc, tw * 0.4);
+    const barH = 9 * sc;
     const barX = cx - barW / 2;
-    const barY = cy + th / 2 - 12 * sc;
-    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    const barY = cy + innerH / 2 - 20 * sc;
+
+    // 底色
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
     drawRoundedRect(barX, barY, barW, barH, barH / 2);
     ctx.fill();
-    ctx.fillStyle = remaining > 30 ? C.GREEN_BRIGHT : C.RED;
-    drawRoundedRect(barX, barY, barW * (remaining / 112), barH, barH / 2);
+
+    // 填充
+    const ratio = remaining / 112;
+    const barGrad = ctx.createLinearGradient(barX, 0, barX + barW * ratio, 0);
+    barGrad.addColorStop(0, ratio > 0.3 ? '#2E7D32' : '#C43B2A');
+    barGrad.addColorStop(1, ratio > 0.3 ? '#4CAF50' : '#EF5350');
+    ctx.fillStyle = barGrad;
+    drawRoundedRect(barX, barY, barW * ratio, barH, barH / 2);
     ctx.fill();
-    ctx.fillStyle = C.TEXT_DIM;
-    ctx.font = `${Math.floor(8 * sc)}px "Microsoft YaHei", sans-serif`;
+
+    // 数字
+    ctx.fillStyle = C.TEXT;
+    ctx.font = `bold ${Math.floor(12 * sc)}px "Microsoft YaHei", sans-serif`;
     ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillText(`余牌 ${remaining}`, cx, barY + barH + 3 * sc);
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(`🀄 余牌 ${remaining}`, cx, barY - 4 * sc);
   }
 
   function drawPortraitBottom(bottomH, tableBottomY) {
