@@ -69,9 +69,11 @@ window.UI = (function() {
 
   function getPointerPos(e) {
     const rect = canvas.getBoundingClientRect();
+    // Touch 传给 handleClick 时可能是 Touch 对象，统一处理
+    const src = e.touches ? e.touches[0] : (e.changedTouches ? e.changedTouches[0] : e);
     return {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top
+      x: src.clientX - rect.left,
+      y: src.clientY - rect.top
     };
   }
 
@@ -103,8 +105,13 @@ window.UI = (function() {
   }
 
   function setupInputHandlers() {
-    // 统一用 click 处理，桌面和手机都能用
+    // 桌面：click
     canvas.addEventListener('click', handleClick);
+    // 手机：touchstart 立即处理，阻止后续300ms的click重复
+    canvas.addEventListener('touchstart', function(e) {
+      e.preventDefault();
+      handleClick(e);
+    }, { passive: false });
 
     // 胡牌按钮
     document.getElementById('btnHu').addEventListener('click', () => {
