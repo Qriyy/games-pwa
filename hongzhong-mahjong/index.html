@@ -16,15 +16,28 @@ canvas { display: block; }
 }
 #ui-overlay button {
   pointer-events: auto;
-  padding: 10px 28px; font-size: 18px; font-family: 'Microsoft YaHei', sans-serif;
-  border: 2px solid #D4A545; border-radius: 8px;
+  padding: 12px 24px; font-size: 20px; font-weight: bold; font-family: 'Microsoft YaHei', sans-serif;
+  border: 2px solid #D4A545; border-radius: 10px;
   background: rgba(27,58,45,0.92); color: #D4A545;
   cursor: pointer; transition: all 0.2s;
-  min-width: 70px; min-height: 44px;
+  min-width: 80px; min-height: 50px;
 }
+/* 胡牌按钮醒目红色 */
+#ui-overlay button#btnHu:not(:disabled) {
+  background: rgba(180,40,30,0.92);
+  border-color: #FF5544;
+  color: #FFD0C0;
+}
+#ui-overlay button#btnHu:not(:disabled):hover {
+  background: #FF5544;
+  color: #fff;
+}
+#ui-overlay button:hover { background: #D4A545; color: #0A1A12; }
+#ui-overlay button:disabled { opacity: 0.25; cursor: default; }
+#ui-overlay button:disabled:hover { background: rgba(27,58,45,0.92); color: #D4A545; }
 @media (max-width: 600px) {
-  #ui-overlay { gap: 8px; padding: 8px 4px; }
-  #ui-overlay button { padding: 12px 20px; font-size: 20px; min-width: 60px; min-height: 48px; }
+  #ui-overlay { gap: 16px; padding: 8px 10px; }
+  #ui-overlay button { padding: 14px 18px; font-size: 20px; min-width: 80px; min-height: 54px; }
   #status-bar { font-size: 13px; padding: 5px 12px; max-width: 95vw; overflow: hidden; text-overflow: ellipsis; }
   #result-box { padding: 20px 16px; }
   #result-box h2 { font-size: 22px; }
@@ -32,9 +45,6 @@ canvas { display: block; }
   #result-box .score { font-size: 18px; }
   #result-box button { padding: 12px 28px; font-size: 18px; min-height: 48px; }
 }
-#ui-overlay button:hover { background: #D4A545; color: #0A1A12; }
-#ui-overlay button:disabled { opacity: 0.3; cursor: default; }
-#ui-overlay button:disabled:hover { background: rgba(27,58,45,0.92); color: #D4A545; }
 #result-modal {
   display: none; position: fixed; inset: 0; z-index: 100;
   background: rgba(0,0,0,0.7); justify-content: center; align-items: center;
@@ -62,6 +72,7 @@ canvas { display: block; }
   background: rgba(10,26,18,0.85); padding: 6px 20px;
   border-radius: 20px; border: 1px solid #D4A545;
   white-space: nowrap; pointer-events: none;
+  max-width: 95vw; overflow: hidden; text-overflow: ellipsis;
 }
 </style>
 </head>
@@ -704,7 +715,7 @@ function aiChooseDiscard(playerIdx) {
 // ============== RENDERING ==============
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
-let W, H, scaleX, scaleY;
+let W, H, scaleX, scaleY, th2_global;
 
 function resize() {
   W = window.innerWidth;
@@ -802,10 +813,16 @@ function render() {
   ctx.fillStyle = BG;
   ctx.fillRect(0, 0, W, H);
 
-  // Table
+  const isPortrait = H > W;
   const cx = W / 2, cy = H / 2;
-  const tw = Math.min(W * 0.85, 900 * scaleX);
-  const th = Math.min(H * 0.7, 560 * scaleY);
+  const s = Math.min(scaleX, scaleY);
+  const tw2 = TILE_W * s, th2 = TILE_H * s;
+  const tws = TILE_W_SM * s, ths = TILE_H_SM * s;
+  th2_global = th2;
+
+  // Table
+  const tw = Math.min(W * 0.92, 900 * scaleX);
+  const th = Math.min(H * 0.72, 560 * scaleY);
   ctx.fillStyle = TABLE;
   drawRoundedRect(cx - tw / 2, cy - th / 2, tw, th, 20);
   ctx.fill();
@@ -823,49 +840,46 @@ function render() {
     ctx.stroke();
   }
 
-  const s = Math.min(scaleX, scaleY);
-  const tw2 = TILE_W * s, th2 = TILE_H * s;
-  const tws = TILE_W_SM * s, ths = TILE_H_SM * s;
-
-  // Draw discards for each player
-  renderDiscards(cx, cy, tw, th, tws, ths, s);
-
-  // Draw melds for each player
-  renderMelds(cx, cy, tw, th, tw2, th2, s);
-
-  // Draw player hand (bottom)
-  renderPlayerHand(cx, cy, tw, th, tw2, th2, s);
-
-  // Draw AI hands (top, left, right) - backs
-  renderAIHand(1, cx, cy, tw, th, tws, ths, s); // top
-  renderAIHand(2, cx, cy, tw, th, tws, ths, s); // left
-  renderAIHand(3, cx, cy, tw, th, tws, ths, s); // right
-
-  // Remaining tiles count
+  // Remaining tiles count (center of table)
   ctx.fillStyle = '#8A8A6A';
   ctx.font = `${Math.floor(14 * s)}px Microsoft YaHei`;
   ctx.textAlign = 'center';
   ctx.fillText(`余牌: ${state.deck.length}`, cx, cy - 8 * s);
+
+  // Draw AI hands (top, left, right) - backs
+  renderAIHand(1, cx, cy, tw, th, tws, ths, s); // 北 (top)
+  renderAIHand(2, cx, cy, tw, th, tws, ths, s); // 西 (left)
+  renderAIHand(3, cx, cy, tw, th, tws, ths, s); // 东 (right)
+
+  // Draw discards for each player (with labels)
+  renderDiscards(cx, cy, tw, th, tws, ths, s);
+
+  // Draw player melds (left of hand area, smaller tiles)
+  renderMelds(cx, cy, tw, th, tw2, th2, s);
+
+  // Draw player hand (bottom) - all face up
+  renderPlayerHand(cx, cy, tw, th, tw2, th2, s);
 
   // Player labels
   drawPlayerLabels(cx, cy, tw, th, s);
 }
 
 function drawPlayerLabels(cx, cy, tw, th, s) {
-  ctx.font = `bold ${Math.floor(14 * s)}px Microsoft YaHei`;
+  const fontSize = Math.max(13, Math.floor(15 * s));
+  ctx.font = `bold ${fontSize}px Microsoft YaHei`;
   ctx.textAlign = 'center';
 
-  // Player (south)
-  ctx.fillStyle = '#8A8A6A';
-  ctx.fillText('你 (南)', cx, H - 10 * s);
+  // Player (south) - positioned above the buttons area, not at bottom
+  ctx.fillStyle = state.currentPlayer === 0 ? GOLD : '#8A8A6A';
+  ctx.fillText('你(南)', cx, H - th2_global - 80 * s);
 
   // AI labels
-  const labels = ['', '北 (AI)', '东 (AI)', '西 (AI)'];
+  const labels = ['', '北(AI)', '西(AI)', '东(AI)'];
   const positions = [
     null,
-    [cx, cy - th / 2 - 30 * s], // top
-    [cx - tw / 2 - 30 * s, cy], // left
-    [cx + tw / 2 + 30 * s, cy]  // right
+    [cx, cy - th / 2 - 28 * s], // top = 北
+    [cx - tw / 2 - 28 * s, cy], // left = 西
+    [cx + tw / 2 + 28 * s, cy]  // right = 东
   ];
   for (let i = 1; i <= 3; i++) {
     const [px, py] = positions[i];
@@ -878,18 +892,23 @@ function drawPlayerLabels(cx, cy, tw, th, s) {
     ctx.restore();
   }
 
-  // Current turn indicator
+  // Current turn indicator (glowing dot)
   if (state.phase === 'playerTurn' || state.phase === 'aiTurn') {
     const indicators = [
-      [cx, H - 24 * s],
-      [cx, cy - th / 2 - 15 * s],
-      [cx - tw / 2 - 15 * s, cy],
-      [cx + tw / 2 + 15 * s, cy]
+      [cx, H - th2_global - 62 * s],
+      [cx, cy - th / 2 - 12 * s],
+      [cx - tw / 2 - 12 * s, cy],
+      [cx + tw / 2 + 12 * s, cy]
     ];
     const [ix, iy] = indicators[state.currentPlayer];
-    ctx.fillStyle = GOLD;
+    ctx.fillStyle = '#FFD700';
     ctx.beginPath();
-    ctx.arc(ix, iy, 5 * s, 0, Math.PI * 2);
+    ctx.arc(ix, iy, 6 * s, 0, Math.PI * 2);
+    ctx.fill();
+    // Glow
+    ctx.fillStyle = 'rgba(255,215,0,0.3)';
+    ctx.beginPath();
+    ctx.arc(ix, iy, 10 * s, 0, Math.PI * 2);
     ctx.fill();
   }
 }
@@ -904,15 +923,21 @@ function renderPlayerHand(cx, cy, tw, th, tw2, th2, s) {
     state.selectedIdx = -1;
   }
 
-  const gap = Math.min(tw2 + 2, (tw * 0.9) / Math.max(hand.length, 1));
-  const startX = cx - (hand.length * gap) / 2;
-  const baseY = H - th2 - 20 * s;
+  // Account for meld area on the left (reserve space)
+  const meldCount = state.melds[0].length;
+  const meldWidth = meldCount > 0 ? meldCount * tw2 * 0.55 * 4 + 20 * s : 0;
+
+  const availableW = W - meldWidth - 16 * s;
+  const gap = Math.min(tw2 + 2, availableW / Math.max(hand.length, 1));
+  const startX = meldWidth / 2 + (availableW - hand.length * gap) / 2 + 8 * s;
+  const baseY = H - th2 - 60 * s; // Leave room for buttons below
 
   // Store positions for click detection
   state._playerTilePositions = [];
   for (let i = 0; i < hand.length; i++) {
     const x = startX + i * gap;
     const selected = (state.selectedIdx >= 0 && i === state.selectedIdx);
+    // ALL player tiles face up - always true
     drawTile(x, baseY, tw2, th2, hand[i], true, selected);
     state._playerTilePositions.push({ x, y: baseY - (selected ? 12 * s : 0), w: tw2, h: th2, idx: i });
   }
@@ -953,16 +978,38 @@ function renderAIHand(playerIdx, cx, cy, tw, th, tws, ths, s) {
 
 function renderDiscards(cx, cy, tw, th, twsm, thsm, s) {
   const gapX = twsm + 2, gapY = thsm + 2;
-  const cols = 8;
+  const cols = 7;
+  const labelFont = `${Math.max(10, Math.floor(11 * s))}px Microsoft YaHei`;
 
-  // Player discards (bottom area of table)
-  renderDiscardArea(0, cx, cy + th / 2 - thsm - 50 * s, twsm, thsm, gapX, gapY, cols, 0, s);
-  // Top discards
-  renderDiscardArea(1, cx, cy - th / 2 + 40 * s, twsm, thsm, gapX, gapY, cols, 0, s);
-  // Left discards
-  renderDiscardArea(2, cx - tw / 2 + 80 * s, cy, twsm, thsm, gapX, gapY, cols, 0, s);
-  // Right discards
-  renderDiscardArea(3, cx + tw / 2 - 80 * s - (cols * gapX), cy, twsm, thsm, gapX, gapY, cols, 0, s);
+  // Player discards (bottom area of table) - 南
+  const southY = cy + th / 2 - thsm - 60 * s;
+  renderDiscardArea(0, cx, southY, twsm, thsm, gapX, gapY, cols, 0, s);
+  ctx.fillStyle = '#5A5A4A'; ctx.font = labelFont; ctx.textAlign = 'left';
+  ctx.fillText('南(弃)', cx - (cols * gapX) / 2 - 2 * s, southY - 4 * s);
+
+  // Top discards - 北
+  const northY = cy - th / 2 + 30 * s;
+  renderDiscardArea(1, cx, northY, twsm, thsm, gapX, gapY, cols, 0, s);
+  ctx.fillStyle = '#5A5A4A'; ctx.font = labelFont; ctx.textAlign = 'left';
+  ctx.fillText('北(弃)', cx - (cols * gapX) / 2 - 2 * s, northY - 4 * s);
+
+  // Left discards - 西
+  const westX = cx - tw / 2 + 70 * s;
+  renderDiscardArea(2, westX, cy, twsm, thsm, gapX, gapY, cols, 0, s);
+  ctx.fillStyle = '#5A5A4A'; ctx.font = labelFont; ctx.textAlign = 'center';
+  ctx.save(); ctx.translate(westX - 8 * s, cy);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText('西(弃)', 0, 0);
+  ctx.restore();
+
+  // Right discards - 东
+  const eastX = cx + tw / 2 - 70 * s - (cols * gapX);
+  renderDiscardArea(3, eastX, cy, twsm, thsm, gapX, gapY, cols, 0, s);
+  ctx.fillStyle = '#5A5A4A'; ctx.font = labelFont; ctx.textAlign = 'center';
+  ctx.save(); ctx.translate(eastX + (cols * gapX) + 8 * s, cy);
+  ctx.rotate(Math.PI / 2);
+  ctx.fillText('东(弃)', 0, 0);
+  ctx.restore();
 }
 
 function renderDiscardArea(playerIdx, startX, startY, tw, th, gapX, gapY, cols, _, s) {
@@ -990,8 +1037,12 @@ function renderDiscardArea(playerIdx, startX, startY, tw, th, gapX, gapY, cols, 
 }
 
 function renderMelds(cx, cy, tw, th, tw2, th2, s) {
-  // Player melds (bottom left)
-  renderMeldArea(0, cx - tw / 2 + 20 * s, H - th2 - 20 * s - th2 * 0.6, tw2 * 0.7, th2 * 0.7, s);
+  // Player melds: left side of hand area, slightly smaller tiles
+  const meldW = tw2 * 0.55;
+  const meldH = th2 * 0.55;
+  const meldY = H - th2 - 60 * s + (th2 - meldH); // align bottom with hand tiles
+  renderMeldArea(0, 8 * s, meldY, meldW, meldH, s);
+
   // AI melds
   renderMeldArea(1, cx + tw / 2 - 20 * s, cy - th / 2 + 10 * s, tw2 * 0.5, th2 * 0.5, s);
   renderMeldArea(2, cx - tw / 2 + 10 * s, cy + th / 2 - 20 * s, tw2 * 0.5, th2 * 0.5, s);
@@ -1058,7 +1109,7 @@ function startNewGame() {
   } else {
     // AI is dealer, AI goes first
     state.phase = 'aiTurn';
-    setStatus(`庄家 AI ${state.dealerIdx} 先出`);
+    setStatus(`庄家 ${aiDirectionName(state.dealerIdx)} 先出`);
   }
   updateButtons();
   render();
@@ -1140,7 +1191,7 @@ function playerDiscard(idx) {
 function aiTurn(playerIdx) {
   state.phase = 'aiTurn';
   state.currentPlayer = playerIdx;
-  setStatus(`AI ${playerIdx} 思考中...`);
+  setStatus(`${aiDirectionName(playerIdx)} 思考中...`);
   render();
 
   setTimeout(() => {
@@ -1584,7 +1635,7 @@ function endGame(winner, type, dianpaoPlayer) {
     const isPlayerWin = (winner === 0);
     const { fan, typeName, points } = calcScore(state.hands[winner], state.melds[winner], type);
 
-    title.textContent = isPlayerWin ? '🎉 你赢了！' : `AI ${winner} 胡了`;
+    title.textContent = isPlayerWin ? '🎉 你赢了！' : `${aiDirectionName(winner)} 胡了`;
 
     // 显示牌型名称和番数
     let detailText = `${typeName}（${fan}番）`;
@@ -1632,7 +1683,7 @@ function endGame(winner, type, dianpaoPlayer) {
         } else {
           state.scores[dianpaoPlayer] -= points;
           state.scores[winner] += points;
-          let scoreText = `${typeName}（${fan}番）\nAI ${dianpaoPlayer} 点炮`;
+          let scoreText = `${typeName}（${fan}番）\n${aiDirectionName(dianpaoPlayer)} 点炮`;
           if (state.gangLog.length > 0) scoreText += `\n杠分已计入总分`;
           score.textContent = scoreText;
         }
@@ -1648,7 +1699,7 @@ function endGame(winner, type, dianpaoPlayer) {
 }
 
 function updateScoreBar() {
-  const names = ['你(南)', '北AI', '东AI', '西AI'];
+  const names = ['你(南)', '北AI', '西AI', '东AI'];
   let text = '红中麻将 | ';
   for (let i = 0; i < 4; i++) {
     text += `${names[i]}: ${state.scores[i]}  `;
@@ -1657,6 +1708,10 @@ function updateScoreBar() {
 }
 
 // ============== UI HELPERS ==============
+function aiDirectionName(idx) {
+  return ['', '北AI', '西AI', '东AI'][idx] || 'AI';
+}
+
 function setStatus(text) {
   document.getElementById('status-bar').textContent = text;
 }
