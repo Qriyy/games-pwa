@@ -101,12 +101,13 @@ window.UI = (function() {
   }
 
   function setupInputHandlers() {
-    // pointerup 同时覆盖鼠标和触摸，坐标也正确
-    canvas.addEventListener('pointerup', function(e) {
-      // 只响应手指/鼠标按下抬起，忽略悬停笔触等
-      if (e.pointerType === 'pen' && e.pressure === 0) return;
+    // 手机端：touchend 处理，阻止后续 click 重复触发
+    canvas.addEventListener('touchend', function(e) {
+      e.preventDefault();       // 阻止浏览器合成后续 click
       handleClick(e);
-    });
+    }, { passive: false });     // passive:false 才能 preventDefault
+    // 桌面端：click 正常触发（touchend 已阻止所以手机不会走到这里）
+    canvas.addEventListener('click', handleClick);
 
     // 胡牌按钮
     document.getElementById('btnHu').addEventListener('click', () => {
