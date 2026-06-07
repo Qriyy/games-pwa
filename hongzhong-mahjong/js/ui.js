@@ -113,10 +113,8 @@ window.UI = (function() {
   }
 
   function setupInputHandlers() {
-    // pointerdown 统一处理鼠标和触摸，立即响应
-    canvas.addEventListener('pointerdown', function(e) {
-      handleClick(e);
-    });
+    // click 在桌面和手机上都能用，touch-action:none 让手机不卡300ms延迟
+    canvas.addEventListener('click', handleClick);
 
     // 胡牌按钮
     document.getElementById('btnHu').addEventListener('click', () => {
