@@ -1,12 +1,11 @@
 /**
- * 红中麻将 — UI 交互模块
- * 状态栏、按钮控制、音效、输入处理、初始化
+ * 红中麻将 — UI 交互模块（移动端版）
  */
 window.UI = (function() {
   const { isHongzhong, tileBaseId } = window.Tiles;
   const { canSelfGang } = window.HuDetection;
   const { performHu, performPeng, performGang } = window.Actions;
-  const { drawTileFromDeck, playerDiscard, playerPass, startNewGame, endGame, aiTurn } = window.GameFlow;
+  const { drawTileFromDeck, playerDiscard, playerPass, startNewGame, endGame } = window.GameFlow;
   const { canvas, render } = window.Renderer;
 
   function s() { return window.state; }
@@ -23,24 +22,17 @@ window.UI = (function() {
 
   function updateButtons() {
     const st = s();
-    const btnHu = document.getElementById('btnHu');
-    const btnGang = document.getElementById('btnGang');
-    const btnPeng = document.getElementById('btnPeng');
-    const btnPass = document.getElementById('btnPass');
-
-    btnHu.disabled = !st.canHu;
-    btnGang.disabled = !st.canGang;
-    btnPeng.disabled = !st.canPeng;
-    btnPass.disabled = !(st.turnPhase === 'response' && (st.canHu || st.canGang || st.canPeng));
+    document.getElementById('btnHu').disabled = !st.canHu;
+    document.getElementById('btnGang').disabled = !st.canGang;
+    document.getElementById('btnPeng').disabled = !st.canPeng;
+    document.getElementById('btnPass').disabled = !(st.turnPhase === 'response' && (st.canHu || st.canGang || st.canPeng));
   }
 
   function updateScoreBar() {
     const st = s();
     const names = ['你(南)', '北AI', '西AI', '东AI'];
     let text = '红中麻将 | ';
-    for (let i = 0; i < 4; i++) {
-      text += `${names[i]}: ${st.scores[i]}  `;
-    }
+    for (let i = 0; i < 4; i++) text += names[i] + ': ' + st.scores[i] + '  ';
     document.getElementById('status-bar').textContent = text;
   }
 
@@ -48,51 +40,26 @@ window.UI = (function() {
     try {
       if (window.HongZhongAudio) {
         const fn = 'play' + name.charAt(0).toUpperCase() + name.slice(1);
-        if (typeof HongZhongAudio[fn] === 'function') {
-          HongZhongAudio[fn]();
-        }
+        if (typeof HongZhongAudio[fn] === 'function') HongZhongAudio[fn]();
       }
     } catch(e) {}
   }
 
-  // ============== 输入处理 ==============
-
-  function getPointerPos(e) {
-    const rect = canvas.getBoundingClientRect();
-    // touchend 时 e.touches 为空，需用 changedTouches
-    const src = (e.touches && e.touches.length > 0) ? e.touches[0]
-      : (e.changedTouches && e.changedTouches.length > 0) ? e.changedTouches[0]
-      : e;
-    return {
-      x: src.clientX - rect.left,
-      y: src.clientY - rect.top
-    };
-  }
-
-  let debugMsg = '';
-  function showDebug(msg) {
-    debugMsg = msg;
-    const el = document.getElementById('debug-overlay');
-    if (el) el.textContent = msg;
-  }
+  // ============== 点击处理 ==============
 
   function handleClick(e) {
     const st = s();
-    const pos = getPointerPos(e);
-    const canvasRect = canvas.getBoundingClientRect();
-
-    showDebug(`type=${e.type} pos(${pos.x.toFixed(0)},${pos.y.toFixed(0)}) canvas(${canvas.width}x${canvas.height}) rect(${canvasRect.width.toFixed(0)}x${canvasRect.height.toFixed(0)}) phase=${st.phase} turn=${st.turnPhase} tiles=${st._playerTilePositions?st._playerTilePositions.length:0}`);
-
     if (st.phase !== 'playerTurn') return;
-
     if (st.turnPhase !== 'discard') return;
-
     if (!st._playerTilePositions || st._playerTilePositions.length === 0) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
 
     for (let i = st._playerTilePositions.length - 1; i >= 0; i--) {
       const tp = st._playerTilePositions[i];
-      if (pos.x >= tp.x && pos.x <= tp.x + tp.w && pos.y >= tp.y && pos.y <= tp.y + tp.h) {
-        showDebug(`命中牌${i} selected=${st.selectedIdx}`);
+      if (x >= tp.x && x <= tp.x + tp.w && y >= tp.y && y <= tp.y + tp.h) {
         if (st.selectedIdx === i) {
           playerDiscard(i);
         } else {
@@ -107,17 +74,16 @@ window.UI = (function() {
       st.selectedIdx = -1;
       render();
     }
-    const first = st._playerTilePositions[0];
-    const last = st._playerTilePositions[st._playerTilePositions.length-1];
-    showDebug(`未命中 点击(${pos.x.toFixed(0)},${pos.y.toFixed(0)}) 牌x[${first.x.toFixed(0)}-${(last.x+last.w).toFixed(0)}] y[${first.y.toFixed(0)}-${(first.y+first.h).toFixed(0)}]`);
   }
 
-  function setupInputHandlers() {
+  // ============== 初始化 ==============
+
+  function init() {
     // click 在桌面和手机上都能用，touch-action:none 让手机不卡300ms延迟
     canvas.addEventListener('click', handleClick);
 
     // 胡牌按钮
-    document.getElementById('btnHu').addEventListener('click', () => {
+    document.getElementById('btnHu').addEventListener('click', function() {
       const st = s();
       if (!st.canHu) return;
       playSound('click');
@@ -135,27 +101,26 @@ window.UI = (function() {
     });
 
     // 杠牌按钮
-    document.getElementById('btnGang').addEventListener('click', () => {
+    document.getElementById('btnGang').addEventListener('click', function() {
       const st = s();
       if (!st.canGang) return;
       playSound('click');
-
       if (st.turnPhase === 'response') {
         performGang(0, st.lastDiscard, tileBaseId(st.lastDiscard));
         st.isAfterGang = true;
-        setTimeout(() => drawTileFromDeck(0), 300);
+        setTimeout(function() { drawTileFromDeck(0); }, 300);
       } else {
         const gangs = canSelfGang(st.hands[0], st.melds[0]);
         if (gangs.length > 0) {
           performGang(0, -1, gangs[0]);
           st.isAfterGang = true;
-          setTimeout(() => drawTileFromDeck(0), 300);
+          setTimeout(function() { drawTileFromDeck(0); }, 300);
         }
       }
     });
 
     // 碰牌按钮
-    document.getElementById('btnPeng').addEventListener('click', () => {
+    document.getElementById('btnPeng').addEventListener('click', function() {
       const st = s();
       if (!st.canPeng) return;
       playSound('click');
@@ -171,48 +136,35 @@ window.UI = (function() {
     });
 
     // 过按钮
-    document.getElementById('btnPass').addEventListener('click', () => {
+    document.getElementById('btnPass').addEventListener('click', function() {
       playSound('click');
       playerPass();
     });
 
     // 弹窗内新局按钮
-    document.getElementById('btnNewRound').addEventListener('click', () => {
+    document.getElementById('btnNewRound').addEventListener('click', function() {
       document.getElementById('result-modal').classList.remove('show');
       updateScoreBar();
       startNewGame();
     });
 
     // 新局按钮
-    document.getElementById('btnNewGame').addEventListener('click', () => {
+    document.getElementById('btnNewGame').addEventListener('click', function() {
       document.getElementById('result-modal').classList.remove('show');
       updateScoreBar();
       startNewGame();
     });
-  }
 
-  // ============== 初始化 ==============
-
-  function init() {
-    setupInputHandlers();
-    window.Renderer.resize();
-
-    // 初始调试信息
-    const rect = canvas.getBoundingClientRect();
-    showDebug(`启动完成 canvas(${canvas.width}x${canvas.height}) rect(${rect.width.toFixed(0)}x${rect.height.toFixed(0)}) innerWin(${window.innerWidth}x${window.innerHeight}) dpr=${window.devicePixelRatio}`);
-
+    // 启动游戏
+    resize();
     setStatus('红中麻将');
-
-    // 立即启动游戏，牌图后台加载
     document.getElementById('status-bar').classList.add('hide');
     window.state.dealerIdx = Math.floor(Math.random() * 4);
     startNewGame();
-
   }
 
   return {
     aiDirectionName, setStatus, updateButtons, updateScoreBar, playSound,
     init,
-    get debugMsg() { return debugMsg; },
   };
 })();
