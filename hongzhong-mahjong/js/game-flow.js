@@ -162,7 +162,12 @@ window.GameFlow = (function() {
       st.isAfterGang = false;
       st.isLastTile = false;
 
-      const discardIdx = getAIDecision(st.hands[playerIdx], st.difficulty);
+      let discardIdx;
+      try {
+        discardIdx = getAIDecision(st.hands[playerIdx], st.difficulty);
+      } catch(e) {
+        discardIdx = -1; // 计算失败，走 fallback
+      }
       if (discardIdx < 0 || discardIdx >= st.hands[playerIdx].length) {
         // fallback: 打第一张非红中
         for (let i = 0; i < st.hands[playerIdx].length; i++) {

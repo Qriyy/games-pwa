@@ -269,8 +269,14 @@ function canFormMelds(counts, meldsNeeded, wilds) {
  * @param {number[]} hand - 手牌（通常13张）
  * @returns {number}
  */
+const _shantenCache = new Map();
 function calcShanten(hand) {
   if (hand.length === 0) return -1;
+
+  // 缓存相同手牌的计算结果
+  const key = sortHand(hand).join(',');
+  if (_shantenCache.has(key)) return _shantenCache.get(key);
+  if (_shantenCache.size > 200) _shantenCache.clear();
 
   const hzCount = countHongZhong(hand);
   const tiles = nonHongZhong(hand);
@@ -282,8 +288,11 @@ function calcShanten(hand) {
   // 向听数 = 8 - 2*面子数 - 搭子数修正
   // 用递归枚举所有可能的面子+搭子组合，取最优
   let bestShanten = 8; // 最大向听
+  let callCount = 0;   // 防止手机端递归过深卡死
 
   function search(cnts, melds, pairs, partials, wildsLeft) {
+    callCount++;
+    if (callCount > 800) return; // 手机端安全限制，避免卡死
     const total = Object.values(cnts).reduce((a, b) => a + b, 0);
     if (total + wildsLeft === 0) {
       // 计算向听: 8 - 2*melds - pairs - partials
@@ -419,7 +428,9 @@ function calcShanten(hand) {
   }
 
   search(counts, 0, 0, 0, hzCount);
-  return Math.max(-1, bestShanten);
+  const result = Math.max(-1, bestShanten);
+  _shantenCache.set(key, result);
+  return result;
 }
 
 // ============================================================
@@ -440,9 +451,15 @@ function countWaits(hand) {
     const inHand = handCounts[tile] || 0;
     if (inHand >= 4) continue; // 已有4张，不可能再摸到
     const testHand = [...hand, tile];
-    if (canWin(testHand)) {
-      waitSet.add(tile);
+    try {
+      if (canWin(testHand)) {
+        waitSet.add(tile);
+      }
+    } catch(e) {
+      // 递归过深时跳过，不影响大局
     }
+    // 手机端限制：找到几个进张就足够评估了
+    if (waitSet.size >= 8) break;
   }
 
   const waits = [...waitSet].sort((a, b) => a - b);
