@@ -105,7 +105,6 @@ window.UI = (function() {
   function setupInputHandlers() {
     // 统一用 click 处理，桌面和手机都能用
     canvas.addEventListener('click', handleClick);
-  }
 
     // 胡牌按钮
     document.getElementById('btnHu').addEventListener('click', () => {
@@ -174,7 +173,7 @@ window.UI = (function() {
       startNewGame();
     });
 
-    // 右上角新局按钮
+    // 新局按钮
     document.getElementById('btnNewGame').addEventListener('click', () => {
       document.getElementById('result-modal').classList.remove('show');
       updateScoreBar();
