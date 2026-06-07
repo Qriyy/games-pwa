@@ -59,8 +59,10 @@ window.UI = (function() {
 
   function getPointerPos(e) {
     const rect = canvas.getBoundingClientRect();
-    // Touch 传给 handleClick 时可能是 Touch 对象，统一处理
-    const src = e.touches ? e.touches[0] : (e.changedTouches ? e.changedTouches[0] : e);
+    // touchend 时 e.touches 为空，需用 changedTouches
+    const src = (e.touches && e.touches.length > 0) ? e.touches[0]
+      : (e.changedTouches && e.changedTouches.length > 0) ? e.changedTouches[0]
+      : e;
     return {
       x: src.clientX - rect.left,
       y: src.clientY - rect.top
@@ -94,13 +96,21 @@ window.UI = (function() {
     }
   }
 
+  let lastTouchTime = 0;
+
   function setupInputHandlers() {
-    // click 桌面+手机都能用
-    canvas.addEventListener('click', handleClick);
-    // 手机端 touchstart 零延迟处理（不阻止click也好，两个都能触发无坏影响）
-    canvas.addEventListener('touchstart', function(e) {
+    // 手机端：touchend 触发，同时标记时间阻止后续 click 重复触发
+    // 只处理直接点在 canvas 上的触摸，不拦截按钮的冒泡事件
+    canvas.addEventListener('touchend', function(e) {
+      if (e.target !== canvas) return;
+      lastTouchTime = Date.now();
       handleClick(e);
-    }, { passive: true });
+    });
+    // 桌面端：click 正常触发；手机端如果 touchend 刚处理过则跳过
+    canvas.addEventListener('click', function(e) {
+      if (Date.now() - lastTouchTime < 500) return;
+      handleClick(e);
+    });
 
     // 胡牌按钮
     document.getElementById('btnHu').addEventListener('click', () => {
