@@ -100,19 +100,11 @@ window.UI = (function() {
     }
   }
 
-  let lastTouchTime = 0;
-
   function setupInputHandlers() {
-    // 手机端：touchend 触发，同时标记时间阻止后续 click 重复触发
-    // 只处理直接点在 canvas 上的触摸，不拦截按钮的冒泡事件
-    canvas.addEventListener('touchend', function(e) {
-      if (e.target !== canvas) return;
-      lastTouchTime = Date.now();
-      handleClick(e);
-    });
-    // 桌面端：click 正常触发；手机端如果 touchend 刚处理过则跳过
-    canvas.addEventListener('click', function(e) {
-      if (Date.now() - lastTouchTime < 500) return;
+    // pointerup 同时覆盖鼠标和触摸，坐标也正确
+    canvas.addEventListener('pointerup', function(e) {
+      // 只响应手指/鼠标按下抬起，忽略悬停笔触等
+      if (e.pointerType === 'pen' && e.pressure === 0) return;
       handleClick(e);
     });
 
