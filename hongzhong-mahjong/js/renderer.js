@@ -25,9 +25,10 @@ window.Renderer = (function() {
     canvas.width = W;
     canvas.height = H;
     isPortrait = H > W;
-    // 缩放基准：竖屏用手机参考宽度 390px，横屏用桌面 1200px
+    // 竖屏：参考 375px（iPhone SE）宽度
+    // 横屏：参考 1200px 桌面宽度
     if (isPortrait) {
-      sc = Math.min(W / 390, H / 844, 1.5);
+      sc = Math.min(W / 375, 1.3);
     } else {
       sc = Math.min(W / 1200, H / 800, 1.2);
     }
@@ -634,7 +635,7 @@ window.Renderer = (function() {
   function drawPortraitTopBar(topBarH) {
     const st = window.state;
     const lp = LAYOUT.PORTRAIT;
-    const y = 4 * sc;
+    const y = 2 * sc;
     const barH = topBarH - 2 * sc;
     const third = W / 3;
 
@@ -642,43 +643,31 @@ window.Renderer = (function() {
       const x = third * (p - 1);
       const isActive = st.currentPlayer === p;
 
-      // 卡片背景
-      drawRoundedRect(x + 4 * sc, y, third - 8 * sc, barH, 6);
-      ctx.fillStyle = isActive ? '#1A2840' : '#131B26';
-      ctx.fill();
-      ctx.strokeStyle = isActive ? C.PANEL_ACTIVE : '#1A2A3A';
-      ctx.lineWidth = isActive ? 1.5 : 0.5;
-      ctx.stroke();
-
       // 头像圆圈
       const r = lp.AVATAR_R * sc;
-      const avX = x + 14 * sc;
+      const avX = x + 12 * sc;
       const avY = y + barH / 2;
       drawCircle(avX, avY, r, C.WIND_COLORS[p], isActive ? C.GOLD : null);
 
       ctx.fillStyle = '#fff';
-      ctx.font = `bold ${Math.floor(r * 0.75)}px "Microsoft YaHei", sans-serif`;
+      ctx.font = `bold ${Math.floor(r * 0.7)}px "Microsoft YaHei", sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(['北','西','东'][p - 1], avX, avY + 1);
 
-      // AI 名字
-      ctx.fillStyle = isActive ? C.GOLD : C.TEXT;
-      ctx.font = `bold ${Math.floor(9 * sc)}px "Microsoft YaHei", sans-serif`;
+      // 分数（精简，不加"分:"）
+      ctx.fillStyle = isActive ? C.GOLD : C.TEXT_DIM;
+      ctx.font = `${Math.floor(10 * sc)}px "Microsoft YaHei", sans-serif`;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.fillText(['北AI','西AI','东AI'][p - 1], avX + r + 5 * sc, avY - 7 * sc);
+      const label = ['北AI','西AI','东AI'][p - 1];
+      ctx.fillText(`${label} ${st.scores[p]}`, avX + r + 4 * sc, avY);
 
-      // 分数
-      ctx.fillStyle = C.TEXT_DIM;
+      // 牌数（右侧）
+      ctx.fillStyle = isActive ? C.GOLD : 'rgba(255,255,255,0.3)';
       ctx.font = `${Math.floor(8 * sc)}px "Microsoft YaHei", sans-serif`;
-      ctx.fillText(`分:${st.scores[p]}`, avX + r + 5 * sc, avY + 7 * sc);
-
-      // 牌数（右对齐）
       ctx.textAlign = 'right';
-      ctx.fillStyle = isActive ? C.GOLD : C.TEXT_DIM;
-      ctx.font = `${Math.floor(9 * sc)}px "Microsoft YaHei", sans-serif`;
-      ctx.fillText(`${st.hands[p].length}张`, x + third - 8 * sc, avY);
+      ctx.fillText(`×${st.hands[p].length}`, x + third - 8 * sc, avY);
     }
   }
 
@@ -765,40 +754,67 @@ window.Renderer = (function() {
     const hand = st.hands[0];
     const cx = W / 2;
     const lp = LAYOUT.PORTRAIT;
-    const tw = lp.TILE_W * sc;
-    const th = lp.TILE_H * sc;
-    th2 = th;
 
     st.hands[0] = sortHand(st.hands[0]);
     if (st.selectedIdx >= hand.length) st.selectedIdx = -1;
 
-    const areaTop = H - bottomH;
+    const padX = 2 * sc;
 
-    // ——— 顶部：玩家信息（名字 + 分数） ———
-    const infoY = areaTop + 4 * sc;
-    const r = 12 * sc;
-    const avX = r + 10 * sc;
+    // ====== 计算手牌布局（从下往上排） ======
+    // 按钮区域大约底部 70px，提示文字 20px，留空隙
+    const btnReserve = 82 * sc;
+    const maxTileW = lp.TILE_W * sc;
+    const maxTileH = lp.TILE_H * sc;
+    const availW = W - padX * 2;
+
+    // 每张牌最小可见宽度
+    const minVisibleW = 26 * sc;
+    const needNoOverlap = maxTileW * hand.length + (hand.length - 1) * 2;
+
+    let tileW, tileH, pitch;
+    if (needNoOverlap <= availW) {
+      // 不重叠
+      tileW = maxTileW;
+      tileH = maxTileH;
+      pitch = (availW - tileW) / Math.max(hand.length - 1, 1);
+    } else {
+      // 重叠模式
+      const targetPitch = (availW - maxTileW) / Math.max(hand.length - 1, 1);
+      const visiblePerTile = Math.max(targetPitch, minVisibleW);
+      pitch = visiblePerTile;
+      tileW = Math.min(maxTileW, pitch + maxTileW * lp.OVERLAP);
+      tileH = tileW * (maxTileH / maxTileW);
+    }
+
+    th2 = tileH;
+    const totalW = (hand.length - 1) * pitch + tileW;
+    const handStartX = padX + (availW - totalW) / 2;
+    // 手牌贴底部，留 btnReserve 给按钮+提示
+    const handBottom = H - btnReserve;
+    const handY = handBottom - tileH;
+
+    // ====== 玩家信息行（在手牌上方） ======
+    const r = 11 * sc;
+    const infoY = handY - r * 2 - 10 * sc;
+    const avX = 14 * sc;
     const avY = infoY + r + 4 * sc;
+
     drawCircle(avX, avY, r, C.WIND_COLORS[0], st.currentPlayer === 0 ? C.GOLD : null);
     ctx.fillStyle = '#fff';
-    ctx.font = `bold ${Math.floor(r * 0.8)}px "Microsoft YaHei", sans-serif`;
+    ctx.font = `bold ${Math.floor(r * 0.75)}px "Microsoft YaHei", sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('你', avX, avY + 1);
 
-    ctx.fillStyle = st.currentPlayer === 0 ? C.GOLD : C.TEXT;
-    ctx.font = `bold ${Math.floor(11 * sc)}px "Microsoft YaHei", sans-serif`;
+    ctx.fillStyle = C.TEXT;
+    ctx.font = `bold ${Math.floor(10 * sc)}px "Microsoft YaHei", sans-serif`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillText('你(南)', avX + r + 6 * sc, avY - 6 * sc);
+    ctx.fillText(`你(南)  ${st.scores[0]}分`, avX + r + 5 * sc, avY);
 
-    ctx.fillStyle = C.TEXT_DIM;
-    ctx.font = `${Math.floor(10 * sc)}px "Microsoft YaHei", sans-serif`;
-    ctx.fillText(`分:${st.scores[0]}`, avX + r + 6 * sc, avY + 6 * sc);
-
-    // ——— 副露区（紧跟头像右侧） ———
+    // 副露（紧接头像右侧）
     const melds = st.melds[0];
-    let meldX = avX + 90 * sc;
+    let meldX = avX + 78 * sc;
     const mw = lp.MELD_W * sc;
     const mh = lp.MELD_H * sc;
     for (const meld of melds) {
@@ -809,58 +825,46 @@ window.Renderer = (function() {
       meldX += tc * (mw + 1) + 3 * sc;
     }
 
-    // ——— 手牌（紧凑铺满宽度，最大化牌尺寸） ———
-    const padX = 6 * sc;
-    const availW = W - padX * 2;
-    // 计算最大牌间距，保证每张牌可点击
-    const minGap = Math.max(tw * 0.1, 2);
-    // 先算最佳间距：如果默认间距能放下所有牌就用默认，否则缩小
-    const defaultGap = tw * 0.3;
-    const totalDefault = (hand.length - 1) * defaultGap + tw;
-    let gap, handStartX;
-    if (totalDefault <= availW) {
-      gap = defaultGap;
-      handStartX = padX + (availW - totalDefault) / 2;
-    } else {
-      // 牌太多，压缩间距
-      gap = (availW - tw) / Math.max(hand.length - 1, 1);
-      handStartX = padX;
-    }
-
-    const handY = avY + r + 6 * sc;
-
+    // ====== 手牌（从右往左画，前面的牌在上面） ======
     st._playerTilePositions = [];
     const newTileIdx = hand.length - 1;
 
-    for (let i = 0; i < hand.length; i++) {
-      const x = handStartX + i * gap;
+    for (let i = hand.length - 1; i >= 0; i--) {
+      const x = handStartX + i * pitch;
       const isNew = (st.turnPhase === 'draw' || st.turnPhase === 'discard') && i === newTileIdx;
       const selected = st.selectedIdx === i;
-      const yOff = selected ? 14 * sc : (isNew ? 8 * sc : 0);
-      drawTile(x, handY - yOff, tw, th, hand[i], true, selected, isNew && !selected);
-      st._playerTilePositions.push({ x, y: handY - yOff, w: tw, h: th, idx: i });
+      const yOff = selected ? 16 * sc : (isNew ? 10 * sc : 0);
+      drawTile(x, handY - yOff, tileW, tileH, hand[i], true, selected, isNew && !selected);
+    }
+    // 重新正向填充位置数组（供点击检测用）
+    st._playerTilePositions = [];
+    for (let i = 0; i < hand.length; i++) {
+      const x = handStartX + i * pitch;
+      const isNew = (st.turnPhase === 'draw' || st.turnPhase === 'discard') && i === newTileIdx;
+      const selected = st.selectedIdx === i;
+      const yOff = selected ? 16 * sc : (isNew ? 10 * sc : 0);
+      st._playerTilePositions.push({ x, y: handY - yOff, w: tileW, h: tileH, idx: i });
     }
 
-    // ——— 出牌提示 ———
+    // ====== 出牌提示 ======
     if (st.turnPhase === 'discard' && st.phase === 'playerTurn') {
-      ctx.fillStyle = 'rgba(255,215,0,0.4)';
-      ctx.font = `${Math.floor(9 * sc)}px "Microsoft YaHei", sans-serif`;
+      ctx.fillStyle = 'rgba(255,215,0,0.5)';
+      ctx.font = `${Math.floor(10 * sc)}px "Microsoft YaHei", sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
-      const tipY = handY + th + 2 * sc;
-      ctx.fillText('点击选中牌，再点打出', cx, tipY);
+      ctx.fillText('点击牌 → 选中 → 再点打出', cx, handBottom + 4 * sc);
     }
 
-    // ——— 回合指示器（桌面与手牌之间） ———
-    if (st.currentPlayer === 0) {
+    // ====== 回合指示 ======
+    if (st.currentPlayer === 0 && st.phase === 'playerTurn') {
       ctx.save();
-      ctx.fillStyle = 'rgba(255,215,0,0.2)';
+      ctx.fillStyle = 'rgba(255,215,0,0.15)';
       ctx.beginPath();
-      ctx.arc(cx, areaTop + 2 * sc, 10 * sc, 0, Math.PI * 2);
+      ctx.arc(cx, infoY, 6 * sc, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = '#FFD700';
       ctx.beginPath();
-      ctx.arc(cx, areaTop + 2 * sc, 5 * sc, 0, Math.PI * 2);
+      ctx.arc(cx, infoY, 3 * sc, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
     }

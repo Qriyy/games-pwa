@@ -57,19 +57,19 @@ window.Constants = (function() {
     DISCARD_COLS:   7,        // 弃牌列数
     // 移动端竖屏参数
     PORTRAIT: {
-      TOP_BAR_H:    0.10,     // 顶部AI信息栏高度比例
-      TABLE_H:      0.38,     // 桌面区域高度比例
-      BOTTOM_H:     0.52,     // 玩家手牌区域高度比例（加大给手牌和按钮）
-      AVATAR_R:     14,       // 顶部AI头像半径
-      TILE_W:       42,       // 玩家手牌宽度
-      TILE_H:       56,       // 玩家手牌高度
-      DISCARD_W:    22,       // 弃牌宽度
-      DISCARD_H:    30,       // 弃牌高度
-      AI_TILE_W:    22,       // AI牌背宽度
-      AI_TILE_H:    30,       // AI牌背高度
-      MELD_W:       20,       // 副露牌宽度
-      MELD_H:       27,       // 副露牌高度
-      BTN_GAP:      8,        // 按钮间距
+      TOP_BAR_H:    0.08,     // 顶部AI信息栏高度比例（精简）
+      TABLE_H:      0.36,     // 桌面区域高度比例
+      BOTTOM_H:     0.56,     // 玩家手牌+按钮区域高度比例
+      AVATAR_R:     12,       // 顶部AI头像半径
+      OVERLAP:      0.10,     // 手牌重叠比例（仅10%，约5-6px）
+      TILE_W:       50,       // 玩家手牌宽度
+      TILE_H:       67,       // 玩家手牌高度
+      DISCARD_W:    26,       // 弃牌宽度
+      DISCARD_H:    35,       // 弃牌高度
+      AI_TILE_W:    20,       // AI牌背宽度
+      AI_TILE_H:    27,       // AI牌背高度
+      MELD_W:       18,       // 副露牌宽度
+      MELD_H:       24,       // 副露牌高度
     },
   };
 
