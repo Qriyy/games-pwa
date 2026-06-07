@@ -23,7 +23,6 @@ window.UI = (function() {
 
   function updateButtons() {
     const st = s();
-    const overlay = document.getElementById('ui-overlay');
     const btnHu = document.getElementById('btnHu');
     const btnGang = document.getElementById('btnGang');
     const btnPeng = document.getElementById('btnPeng');
@@ -32,12 +31,7 @@ window.UI = (function() {
     btnHu.disabled = !st.canHu;
     btnGang.disabled = !st.canGang;
     btnPeng.disabled = !st.canPeng;
-    // 过按钮只在 response 阶段启用
     btnPass.disabled = !(st.turnPhase === 'response' && (st.canHu || st.canGang || st.canPeng));
-
-    // 有可用按钮就显示，否则隐藏
-    const anyEnabled = !btnHu.disabled || !btnGang.disabled || !btnPeng.disabled || !btnPass.disabled;
-    overlay.style.display = anyEnabled ? 'flex' : 'none';
   }
 
   function updateScoreBar() {

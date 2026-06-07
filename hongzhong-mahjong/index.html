@@ -36,10 +36,9 @@ canvas { display: block; }
 /* ====== 操作按钮 ====== */
 #ui-overlay {
   position: fixed; bottom: 0; left: 0; right: 0;
-  display: none; justify-content: center; gap: 14px;
-  padding: 8px 10px 14px; z-index: 10;
+  display: flex; justify-content: center; gap: 14px;
+  padding: 8px 10px 14px; z-index: 20;
   pointer-events: none;
-  background: linear-gradient(transparent, rgba(13,17,23,0.92) 40%);
 }
 #ui-overlay button {
   pointer-events: auto;
@@ -99,16 +98,16 @@ canvas { display: block; }
   #btnNewGame { font-size: 11px; padding: 4px 12px; bottom: 10px; left: 8px; }
 
   /* 操作按钮 — 移动端加大间距和触摸区域 */
-  #ui-overlay { gap: 8px; padding: 6px 8px 14px; }
+  /* 按钮移到屏幕中央，不挡手牌 */
+  #ui-overlay { gap: 12px; padding: 10px 12px; bottom: 40%; }
   #ui-overlay button {
-    padding: 14px 14px; font-size: 20px; min-width: 64px; min-height: 52px;
-    border-radius: 14px;
-    animation: btnSlideUp 0.3s ease-out;
+    padding: 16px 18px; font-size: 22px; min-width: 72px; min-height: 56px;
+    border-radius: 16px;
   }
-  /* 移动端胡牌按钮更大更醒目 */
+  #ui-overlay button:disabled { opacity: 0.15; }
   #ui-overlay button#btnHu:not(:disabled) {
-    box-shadow: 0 0 16px rgba(232,83,63,0.5);
-    border-width: 2.5px;
+    box-shadow: 0 0 20px rgba(232,83,63,0.5);
+    border-width: 3px; font-size: 24px;
   }
 
   #result-box { padding: 16px 12px; max-width: 320px; }

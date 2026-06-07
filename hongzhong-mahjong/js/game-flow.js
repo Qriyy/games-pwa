@@ -430,8 +430,6 @@ window.GameFlow = (function() {
     }
 
     modal.classList.add('show');
-    // 隐藏操作按钮
-    document.getElementById('ui-overlay').style.display = 'none';
     render();
   }
 
