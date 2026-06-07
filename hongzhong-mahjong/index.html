@@ -36,18 +36,14 @@ canvas { display: block; }
 /* ====== 操作按钮 ====== */
 #ui-overlay {
   position: fixed; bottom: 0; left: 0; right: 0;
-  display: none; justify-content: center; gap: 14px;
+  display: flex; justify-content: center; gap: 14px;
   padding: 8px 10px 14px; z-index: 10;
   pointer-events: none;
   background: linear-gradient(transparent, rgba(13,17,23,0.92) 40%);
-  transition: opacity 0.25s, transform 0.25s;
-  opacity: 0;
-  transform: translateY(10px);
+  opacity: 0; visibility: hidden;
 }
 #ui-overlay.visible {
-  display: flex;
-  opacity: 1;
-  transform: translateY(0);
+  opacity: 1; visibility: visible;
 }
 #ui-overlay button {
   pointer-events: auto;
@@ -108,9 +104,6 @@ canvas { display: block; }
 
   /* 操作按钮 — 移动端加大间距和触摸区域 */
   #ui-overlay { gap: 8px; padding: 6px 8px 14px; }
-  #ui-overlay.visible {
-    display: flex !important;
-  }
   #ui-overlay button {
     padding: 14px 14px; font-size: 20px; min-width: 64px; min-height: 52px;
     border-radius: 14px;
