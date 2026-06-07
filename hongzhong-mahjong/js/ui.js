@@ -114,9 +114,7 @@ window.UI = (function() {
 
   function setupInputHandlers() {
     // pointerdown 统一处理鼠标和触摸，立即响应
-    // touch-action:none 已在 CSS 中设置，确保 touch 不被浏览器拦截
     canvas.addEventListener('pointerdown', function(e) {
-      e.preventDefault();
       handleClick(e);
     });
 

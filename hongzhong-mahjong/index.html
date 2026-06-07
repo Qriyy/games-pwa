@@ -41,7 +41,6 @@ canvas { display: block; touch-action: none; -webkit-tap-highlight-color: transp
   pointer-events: none;
 }
 #ui-overlay button {
-  pointer-events: auto;
   padding: 10px 22px; font-size: 19px; font-weight: bold;
   font-family: 'Microsoft YaHei', sans-serif;
   border: 2px solid #D4A545; border-radius: 10px;
@@ -52,6 +51,7 @@ canvas { display: block; touch-action: none; -webkit-tap-highlight-color: transp
 }
 #ui-overlay button:hover:not(:disabled) { background: #D4A545; color: #0D1117; }
 #ui-overlay button:disabled { opacity: 0.2; cursor: default; pointer-events: none; }
+#ui-overlay button:not(:disabled) { pointer-events: auto; }
 
 /* 胡牌按钮 — 醒目红色 */
 #ui-overlay button#btnHu:not(:disabled) {
