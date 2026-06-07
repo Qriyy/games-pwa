@@ -276,8 +276,9 @@ window.Renderer = (function() {
 
     const topH    = H * lp.TOP_H;
     const sideW   = W * lp.SIDE_W;
-    const tableH  = H * lp.TABLE_H;
-    const bottomH = H - topH - tableH - 6 * sc;
+    // 底部固定只占 22%（信息栏+手牌），其余都给桌面
+    const bottomH = H * 0.22;
+    const tableH  = H - topH - bottomH - 6 * sc;
 
     // 4个方向
     drawPortraitTopAI(0, topH, cx);                        // P1 北（对面）
