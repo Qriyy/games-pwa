@@ -608,20 +608,15 @@ window.Renderer = (function() {
       }
     }
 
-    // 手牌（居中）
+    // 手牌（单循环绘制+记录位置）
     st._playerTilePositions=[]; const newTileIdx=hand.length-1;
-    for(let i=hand.length-1;i>=0;i--){
-      const x=hsx+i*pitch;
-      const isNew=(st.turnPhase==='draw'||st.turnPhase==='discard')&&i===newTileIdx;
-      const sel=st.selectedIdx===i;
-      drawTile(x, handY-(sel?14*sc:(isNew?8*sc:0)), tileW, tileH, hand[i], true, sel, isNew&&!sel);
-    }
-    st._playerTilePositions=[];
     for(let i=0;i<hand.length;i++){
       const x=hsx+i*pitch;
       const isNew=(st.turnPhase==='draw'||st.turnPhase==='discard')&&i===newTileIdx;
       const sel=st.selectedIdx===i;
-      st._playerTilePositions.push({x,y:handY-(sel?14*sc:(isNew?8*sc:0)),w:tileW,h:tileH,idx:i});
+      const yOff=sel?14*sc:(isNew?8*sc:0);
+      drawTile(x, handY-yOff, tileW, tileH, hand[i], true, sel, isNew&&!sel);
+      st._playerTilePositions.push({x,y:handY-yOff,w:tileW,h:tileH,idx:i});
     }
 
     // 提示
