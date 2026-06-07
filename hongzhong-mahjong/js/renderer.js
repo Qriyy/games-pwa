@@ -21,7 +21,7 @@ window.Renderer = (function() {
     canvas.width = W;
     canvas.height = H;
     sc = Math.min(W / 375, 1.3);
-    render();
+    try { render(); } catch(e) { console.error('render异常:', e); }
   }
 
   window.addEventListener('resize', resize);
@@ -162,6 +162,7 @@ window.Renderer = (function() {
 
   function render() {
     var st = window.state;
+    if (!st || !st.hands || !st.hands[0]) return;
     ctx.fillStyle = C.BG;
     ctx.fillRect(0, 0, W, H);
 

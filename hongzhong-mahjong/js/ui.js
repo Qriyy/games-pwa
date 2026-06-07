@@ -156,11 +156,15 @@ window.UI = (function() {
     });
 
     // 启动游戏
-    resize();
-    setStatus('红中麻将');
-    document.getElementById('status-bar').classList.add('hide');
-    window.state.dealerIdx = Math.floor(Math.random() * 4);
-    startNewGame();
+    try {
+      resize();
+      setStatus('红中麻将');
+      document.getElementById('status-bar').classList.add('hide');
+      window.state.dealerIdx = Math.floor(Math.random() * 4);
+      startNewGame();
+    } catch(e) {
+      console.error('初始化异常:', e);
+    }
   }
 
   return {
