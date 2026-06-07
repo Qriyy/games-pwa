@@ -20,7 +20,17 @@ canvas { display: block; }
   border: 2px solid #D4A545; border-radius: 8px;
   background: rgba(27,58,45,0.92); color: #D4A545;
   cursor: pointer; transition: all 0.2s;
-  min-width: 70px;
+  min-width: 70px; min-height: 44px;
+}
+@media (max-width: 600px) {
+  #ui-overlay { gap: 8px; padding: 8px 4px; }
+  #ui-overlay button { padding: 12px 20px; font-size: 20px; min-width: 60px; min-height: 48px; }
+  #status-bar { font-size: 13px; padding: 5px 12px; max-width: 95vw; overflow: hidden; text-overflow: ellipsis; }
+  #result-box { padding: 20px 16px; }
+  #result-box h2 { font-size: 22px; }
+  #result-box .detail { font-size: 14px; }
+  #result-box .score { font-size: 18px; }
+  #result-box button { padding: 12px 28px; font-size: 18px; min-height: 48px; }
 }
 #ui-overlay button:hover { background: #D4A545; color: #0A1A12; }
 #ui-overlay button:disabled { opacity: 0.3; cursor: default; }
@@ -108,6 +118,12 @@ let state = {
   animState: null,
   difficulty: 2, // 0=easy,1=medium,2=hard
   playerWind: 0, // east=0
+  gangLog: [], // [{player, type, score}]
+  isAfterGang: false,
+  isLastTile: false,
+  dealerIdx: 0,
+  qiangGangTile: -1,
+  qiangGangPlayer: -1,
 };
 
 // ============== TILE HELPERS ==============
@@ -120,18 +136,16 @@ function createTile(id) {
 
 function tileSuit(id) {
   if (id === HONGZHONG_ID) return 'zhong';
-  const base = id % 30;
-  if (base < 9) return 'wan';
-  if (base < 18) return 'tiao';
-  return 'tong';
+  if (id >= 1 && id <= 9) return 'wan';
+  if (id >= 10 && id <= 18) return 'tiao';
+  return 'tong'; // 19-27
 }
 
 function tileNumber(id) {
   if (id === HONGZHONG_ID) return 0;
-  const base = id % 30;
-  if (base < 9) return base + 1;
-  if (base < 18) return base - 9 + 1;
-  return base - 18 + 1;
+  if (id <= 9) return id;       // wan 1-9
+  if (id <= 18) return id - 9;  // tiao 1-9
+  return id - 18;               // tong 1-9
 }
 
 function tileName(id) {
@@ -141,19 +155,19 @@ function tileName(id) {
 }
 
 function tileBaseId(id) {
-  // Base ID 0-26 for unique tile types, 27 for hongzhong
+  // Base ID 0-26 for unique tile types (wan1=0..tong9=26), 27 for hongzhong
   if (id === HONGZHONG_ID) return 27;
-  return id % 30;
+  return id - 1;
 }
 
 function isHongzhong(id) { return id === HONGZHONG_ID; }
 
 function buildDeck() {
   let deck = [];
-  // 万 1-9: base 0-8, 4 copies each
-  // 条 1-9: base 9-17, 4 copies each
-  // 筒 1-9: base 18-26, 4 copies each
-  for (let i = 0; i < 27; i++) {
+  // 万 1-9: id 1-9, 4 copies each
+  // 条 1-9: id 10-18, 4 copies each
+  // 筒 1-9: id 19-27, 4 copies each
+  for (let i = 1; i <= 27; i++) {
     for (let c = 0; c < 4; c++) {
       deck.push(i);
     }
@@ -190,9 +204,28 @@ function countTiles(hand) {
 }
 
 // ============== HU CHECK (with hongzhong wild) ==============
-function canHu(hand) {
-  // Check if hand (14 tiles) can form 4 melds + 1 pair
-  // Hongzhong (base 27) is wild
+function canHu(hand, melds) {
+  // Rule: 胡牌必须至少包含1张红中(包括已组成杠中的红中)
+  let hasHongzhong = false;
+  for (const t of hand) { if (isHongzhong(t)) { hasHongzhong = true; break; } }
+  if (!hasHongzhong && melds) {
+    for (const meld of melds) {
+      if (!meld.tiles) continue;
+      for (const t of meld.tiles) {
+        if (isHongzhong(t)) { hasHongzhong = true; break; }
+      }
+      if (hasHongzhong) break;
+    }
+  }
+  if (!hasHongzhong) return { canHu: false, type: null, fan: 0 };
+
+  // Check 七小对 / 龙七对 (7 pairs, 14 tiles only)
+  if (hand.length === 14 && checkQidui(hand)) {
+    if (checkLongQidui(hand)) return { canHu: true, type: 'longqidui', fan: 12 };
+    return { canHu: true, type: 'qidui', fan: 8 };
+  }
+
+  // Check standard 4 melds + 1 pair
   const counts = {};
   let wildCount = 0;
   for (const t of hand) {
@@ -200,7 +233,9 @@ function canHu(hand) {
     const b = tileBaseId(t);
     counts[b] = (counts[b] || 0) + 1;
   }
-  return tryHu(counts, wildCount, 5); // need 5 groups (4 melds + 1 pair)
+  const normal = tryHu(counts, wildCount, 5);
+  if (normal) return { canHu: true, type: 'normal', fan: 1 };
+  return { canHu: false, type: null, fan: 0 };
 }
 
 function tryHu(counts, wild, groupsNeeded) {
@@ -379,6 +414,146 @@ function canPeng(hand, tile) {
   return false;
 }
 
+// ============== QIDUI & SPECIAL HU CHECKS ==============
+function checkQidui(hand) {
+  if (hand.length !== 14) return false;
+  const counts = {};
+  let wildCount = 0;
+  for (const t of hand) {
+    if (isHongzhong(t)) { wildCount++; continue; }
+    const b = tileBaseId(t);
+    counts[b] = (counts[b] || 0) + 1;
+  }
+  let needWild = 0;
+  for (const b in counts) {
+    if (counts[b] % 2 === 1) needWild++;
+  }
+  if (needWild > wildCount) return false;
+  const remainingWild = wildCount - needWild;
+  return remainingWild % 2 === 0;
+}
+
+function checkLongQidui(hand) {
+  if (!checkQidui(hand)) return false;
+  const counts = {};
+  let wildCount = 0;
+  for (const t of hand) {
+    if (isHongzhong(t)) { wildCount++; continue; }
+    const b = tileBaseId(t);
+    counts[b] = (counts[b] || 0) + 1;
+  }
+  // Natural quad
+  for (const b in counts) {
+    if (counts[b] >= 4) return true;
+  }
+  // 3 natural + 1 wild forming a quad
+  for (const b in counts) {
+    if (counts[b] >= 3 && wildCount >= 1) return true;
+  }
+  // 4+ wilds forming their own quad
+  if (wildCount >= 4) return true;
+  return false;
+}
+
+function checkAllTriplets(counts, wild) {
+  for (const b in counts) {
+    let c = counts[b];
+    if (c === 0) continue;
+    const remainder = c % 3;
+    if (remainder > 0) {
+      const needed = 3 - remainder;
+      if (wild >= needed) wild -= needed;
+      else return false;
+    }
+  }
+  return wild >= 0 && wild % 3 === 0;
+}
+
+function tryPairThenTriplets(counts, wild) {
+  const bases = Object.keys(counts);
+  // Try pair from natural tiles
+  for (const b of bases) {
+    if (counts[b] >= 2) {
+      counts[b] -= 2;
+      if (checkAllTriplets({...counts}, wild)) { counts[b] += 2; return true; }
+      counts[b] += 2;
+    }
+  }
+  // Pair with 1 wild + 1 natural
+  if (wild >= 1) {
+    for (const b of bases) {
+      if (counts[b] >= 1) {
+        counts[b] -= 1;
+        if (checkAllTriplets({...counts}, wild - 1)) { counts[b] += 1; return true; }
+        counts[b] += 1;
+      }
+    }
+  }
+  // Pair with 2 wilds
+  if (wild >= 2) {
+    if (checkAllTriplets({...counts}, wild - 2)) return true;
+  }
+  return false;
+}
+
+function checkPengpenghu(hand, melds) {
+  // All melds must be peng/gang
+  for (const m of melds) {
+    if (m.type !== 'peng' && m.type !== 'gang' && m.type !== 'angang') return false;
+  }
+  const counts = {};
+  let wildCount = 0;
+  for (const t of hand) {
+    if (isHongzhong(t)) { wildCount++; continue; }
+    const b = tileBaseId(t);
+    counts[b] = (counts[b] || 0) + 1;
+  }
+  return tryPairThenTriplets(counts, wildCount);
+}
+
+function checkQingyise(hand, melds) {
+  let suit = null;
+  for (const t of hand) {
+    if (isHongzhong(t)) continue;
+    const s = tileSuit(t);
+    if (suit === null) suit = s;
+    else if (s !== suit) return false;
+  }
+  for (const m of melds) {
+    for (const t of m.tiles) {
+      if (isHongzhong(t)) continue;
+      const s = tileSuit(t);
+      if (suit === null) suit = s;
+      else if (s !== suit) return false;
+    }
+  }
+  return suit !== null;
+}
+
+function detectHuType(hand, melds, winType) {
+  const isQidui = (hand.length === 14) && checkQidui(hand);
+  const isLongQidui = isQidui && checkLongQidui(hand);
+  const isPengpenghu = !isQidui && checkPengpenghu(hand, melds);
+  const isQingyise = checkQingyise(hand, melds);
+
+  let baseFan = 1;
+  let names = ['平胡'];
+  if (isLongQidui) { baseFan = 12; names = ['龙七对']; }
+  else if (isQidui) { baseFan = 8; names = ['七小对']; }
+  else { if (isPengpenghu) { baseFan = 2; names = ['碰碰胡']; } }
+  if (isQingyise) { baseFan += 6; names.push('清一色'); }
+
+  let bonusFan = 0;
+  const bonusNames = [];
+  if (winType === 'zimo' || winType === 'zimo_raw') { bonusFan += 1; bonusNames.push('自摸'); }
+  if (winType === 'qiangganghu') { bonusFan += 2; bonusNames.push('抢杠胡'); }
+  if (state.isAfterGang) { bonusFan += 2; bonusNames.push('杠上开花'); }
+  if (state.isLastTile) { bonusFan += 2; bonusNames.push('海底捞月'); }
+
+  const totalFan = baseFan + bonusFan;
+  return { baseFan, bonusFan, totalFan, names: [...names, ...bonusNames] };
+}
+
 function canGang(hand, tile, melds) {
   // Ming gang: have 3 of tile (or 2+wild), opponent discarded it
   if (tile >= 0) {
@@ -426,12 +601,40 @@ function canSelfGang(hand, melds) {
   return results;
 }
 
-// ============== SCORING ==============
-function calcScore(winType) {
-  // Base = 1, zimo ×3 (each other player pays 3), dianpao ×1 (discarder pays 1)
-  const base = 1;
-  if (winType === 'zimo') return base * 3;
-  return base;
+// ============== SCORING =============
+function calcScore(hand, melds, winType) {
+  const isQidui = (hand.length === 14) && checkQidui(hand);
+  const isLongQidui = isQidui && checkLongQidui(hand);
+  const isPengpenghu = !isQidui && checkPengpenghu(hand, melds);
+  const isQingyise = checkQingyise(hand, melds);
+
+  // 基础番: 平胡1 / 碰碰胡2 / 七小对8 / 龙七对12
+  let fan = 1;
+  let typeName = '平胡';
+  if (isLongQidui) { fan = 12; typeName = '龙七对'; }
+  else if (isQidui) { fan = 8; typeName = '七小对'; }
+  else if (isPengpenghu) { fan = 2; typeName = '碰碰胡'; }
+
+  // 清一色 +6番 (叠加)
+  if (isQingyise) { fan += 6; typeName += '·清一色'; }
+
+  // 特殊胡牌叠加
+  if (winType === 'zimo' || winType === 'zimo_raw') { fan += 1; typeName += '·自摸'; }
+  if (winType === 'qiangganghu') { fan += 2; typeName += '·抢杠胡'; }
+  if (state.isAfterGang) { fan += 2; typeName += '·杠上开花'; }
+  if (state.isLastTile) { fan += 2; typeName += '·海底捞月'; }
+
+  // 红中杠 +2番
+  for (const m of melds) {
+    if ((m.type === 'gang' || m.type === 'angang') && m.tiles && m.tiles.length > 0 && isHongzhong(m.tiles[0])) {
+      fan += 2;
+      typeName += '·红中杠';
+      break;
+    }
+  }
+
+  const points = 10 * fan;
+  return { fan, typeName, points };
 }
 
 // ============== AI ACTIONS ==============
@@ -441,7 +644,7 @@ function aiDecideAction(playerIdx, tile, isSelfDraw) {
 
   // Check hu
   const testHand = [...hand, tile];
-  if (canHu(testHand)) {
+  if (canHu(testHand, state.melds[playerIdx]).canHu) {
     try {
       if (window.AIModule && AIModule.shouldHu && AIModule.shouldHu(hand, tile, difficulty)) {
         return 'hu';
@@ -508,8 +711,20 @@ function resize() {
   H = window.innerHeight;
   canvas.width = W;
   canvas.height = H;
-  scaleX = W / 1200;
-  scaleY = H / 800;
+
+  const isPortrait = H > W;
+  if (isPortrait) {
+    // Portrait mode: scale so 13 tiles fit across width with room to spare
+    // Player hand needs ~(13 * tileW + gaps) ≈ 13 * tileW * 1.05
+    // Target: tiles should be at least 36px wide on any phone
+    const desiredTileW = Math.max(36, Math.min(50, W / 15));
+    scaleX = desiredTileW / TILE_W; // 48 is base TILE_W
+    scaleY = scaleX; // keep aspect ratio
+  } else {
+    // Landscape: original design reference
+    scaleX = W / 1200;
+    scaleY = H / 800;
+  }
   render();
 }
 window.addEventListener('resize', resize);
@@ -645,7 +860,7 @@ function drawPlayerLabels(cx, cy, tw, th, s) {
   ctx.fillText('你 (南)', cx, H - 10 * s);
 
   // AI labels
-  const labels = ['', '东 (AI)', '北 (AI)', '西 (AI)'];
+  const labels = ['', '北 (AI)', '东 (AI)', '西 (AI)'];
   const positions = [
     null,
     [cx, cy - th / 2 - 30 * s], // top
@@ -680,7 +895,15 @@ function drawPlayerLabels(cx, cy, tw, th, s) {
 }
 
 function renderPlayerHand(cx, cy, tw, th, tw2, th2, s) {
-  const hand = sortHand(state.hands[0]);
+  // Sort hand in-place so selectedIdx always refers to consistent indices
+  state.hands[0] = sortHand(state.hands[0]);
+  const hand = state.hands[0];
+
+  // Safety: if selectedIdx is out of range, reset it
+  if (state.selectedIdx >= hand.length) {
+    state.selectedIdx = -1;
+  }
+
   const gap = Math.min(tw2 + 2, (tw * 0.9) / Math.max(hand.length, 1));
   const startX = cx - (hand.length * gap) / 2;
   const baseY = H - th2 - 20 * s;
@@ -689,7 +912,7 @@ function renderPlayerHand(cx, cy, tw, th, tw2, th2, s) {
   state._playerTilePositions = [];
   for (let i = 0; i < hand.length; i++) {
     const x = startX + i * gap;
-    const selected = (i === state.selectedIdx);
+    const selected = (state.selectedIdx >= 0 && i === state.selectedIdx);
     drawTile(x, baseY, tw2, th2, hand[i], true, selected);
     state._playerTilePositions.push({ x, y: baseY - (selected ? 12 * s : 0), w: tw2, h: th2, idx: i });
   }
@@ -805,6 +1028,11 @@ function startNewGame() {
   state.winner = -1;
   state.winType = '';
   state.huTile = -1;
+  state.gangLog = [];
+  state.isAfterGang = false;
+  state.isLastTile = false;
+  state.qiangGangTile = -1;
+  state.qiangGangPlayer = -1;
 
   // Deal 13 tiles each
   for (let round = 0; round < 13; round++) {
@@ -813,30 +1041,45 @@ function startNewGame() {
     }
   }
 
-  // Player 0 (east) draws 14th tile
-  state.currentPlayer = 0;
-  state.hands[0].push(state.deck.pop());
-  state.hands[0] = sortHand(state.hands[0]);
+  // Dealer draws 14th tile (首局随机，之后胡牌者坐庄)
+  state.currentPlayer = state.dealerIdx;
+  state.hands[state.dealerIdx].push(state.deck.pop());
+  state.hands[state.dealerIdx] = sortHand(state.hands[state.dealerIdx]);
 
   // Check if player can hu with initial hand
-  if (canHu(state.hands[0])) {
+  if (state.dealerIdx === 0 && canHu(state.hands[0], state.melds[0]).canHu) {
     state.canHu = true;
   }
 
-  state.phase = 'playerTurn';
-  state.turnPhase = 'discard';
-  setStatus('你的回合 - 请出牌');
+  if (state.dealerIdx === 0) {
+    state.phase = 'playerTurn';
+    state.turnPhase = 'discard';
+    setStatus('你的回合 - 请出牌');
+  } else {
+    // AI is dealer, AI goes first
+    state.phase = 'aiTurn';
+    setStatus(`庄家 AI ${state.dealerIdx} 先出`);
+  }
   updateButtons();
   render();
+
+  // If AI is dealer, trigger AI's first turn
+  if (state.dealerIdx !== 0) {
+    setTimeout(() => aiTurn(state.dealerIdx), 800);
+  }
 }
 
 function drawTileFromDeck(playerIdx) {
   if (state.deck.length === 0) {
-    // Draw game
+    // Draw game (荒庄)
     endGame(-1, 'draw');
     return;
   }
   const tile = state.deck.pop();
+
+  // 海底捞月: last tile of the wall
+  if (state.deck.length === 0) state.isLastTile = true;
+
   state.hands[playerIdx].push(tile);
 
   if (playerIdx === 0) {
@@ -846,7 +1089,7 @@ function drawTileFromDeck(playerIdx) {
   // Check self-gang and hu
   if (playerIdx === 0) {
     const selfGangs = canSelfGang(state.hands[0], state.melds[0]);
-    if (canHu(state.hands[0])) {
+    if (canHu(state.hands[0], state.melds[0]).canHu) {
       state.canHu = true;
     }
     state.canGang = selfGangs.length > 0;
@@ -854,7 +1097,11 @@ function drawTileFromDeck(playerIdx) {
     state.selectedIdx = -1;
     state.phase = 'playerTurn';
     state.turnPhase = 'discard';
-    setStatus('你的回合 - 请出牌');
+    // Show status with special info
+    let statusText = '你的回合 - 请出牌';
+    if (state.isAfterGang && state.canHu) statusText = '杠上开花！可以胡！';
+    else if (state.isLastTile && state.canHu) statusText = '海底捞月！可以胡！';
+    setStatus(statusText);
     updateButtons();
     playSound('draw');
   } else {
@@ -869,7 +1116,13 @@ function playerDiscard(idx) {
   if (state.phase !== 'playerTurn' || state.turnPhase !== 'discard') return;
   if (idx < 0 || idx >= state.hands[0].length) return;
 
-  const tile = state.hands[0].splice(idx, 1)[0];
+  const tile = state.hands[0][idx];
+  // Rule: 红中禁止直接打出
+  if (isHongzhong(tile)) {
+    setStatus('红中不能打出！');
+    return;
+  }
+  state.hands[0].splice(idx, 1);
   state.hands[0] = sortHand(state.hands[0]);
   state.discards[0].push(tile);
   state.lastDiscard = tile;
@@ -897,11 +1150,15 @@ function aiTurn(playerIdx) {
       return;
     }
     const tile = state.deck.pop();
+
+    // 海底捞月: last tile
+    if (state.deck.length === 0) state.isLastTile = true;
+
     state.hands[playerIdx].push(tile);
     playSound('draw');
 
     // Check self-hu
-    if (canHu(state.hands[playerIdx])) {
+    if (canHu(state.hands[playerIdx], state.melds[playerIdx]).canHu) {
       // AI decides to hu
       try {
         if (window.AIModule && AIModule.shouldHu) {
@@ -921,13 +1178,18 @@ function aiTurn(playerIdx) {
 
     // Check self-gang
     const selfGangs = canSelfGang(state.hands[playerIdx], state.melds[playerIdx]);
-    if (selfGangs.length > 0 && Math.random() > 0.5) {
+    if (selfGangs.length > 0) {
       const gangBase = selfGangs[0];
       performGang(playerIdx, -1, gangBase);
-      // After gang, draw again
+      // After gang, set flag and draw again
+      state.isAfterGang = true;
       setTimeout(() => aiTurn(playerIdx), 600);
       return;
     }
+
+    // Reset special flags if no hu/gang
+    state.isAfterGang = false;
+    state.isLastTile = false;
 
     // Discard
     const discardIdx = aiChooseDiscard(playerIdx);
@@ -964,7 +1226,7 @@ function checkResponses(discardPlayer, tile) {
     if (p === discardPlayer) continue;
     const testHand = [...state.hands[p], tile];
 
-    if (canHu(testHand)) {
+    if (canHu(testHand, state.melds[p]).canHu) {
       huPlayers.push(p);
     } else if (canGang(state.hands[p], tile, state.melds[p])) {
       gangPlayers.push(p);
@@ -1118,6 +1380,7 @@ function performPeng(playerIdx, tile, fromPlayer) {
   playSound('peng');
 
   if (playerIdx === 0) {
+    state.hands[0] = sortHand(state.hands[0]);
     setStatus('你碰了！请出牌');
     state.phase = 'playerTurn';
     state.turnPhase = 'discard';
@@ -1199,20 +1462,83 @@ function performGang(playerIdx, tile, baseId) {
         tiles: [realTile || baseId, realTile || baseId, realTile || baseId, realTile || baseId]
       });
     }
-    gangType = 'angang';
+    gangType = buGang ? 'bugang' : 'angang';
     tiles = [baseId, baseId, baseId, baseId];
   }
+
+  // Gang scoring: 红中杠 +30 each, angang +20 each, ming/bugang +10 each
+  let gangBase;
+  if (gangType === 'angang' && baseId === 27) {
+    gangBase = 30; // 红中杠: 红中暗杠
+  } else if (gangType === 'angang') {
+    gangBase = 20;
+  } else {
+    gangBase = 10;
+  }
+  for (let p = 0; p < 4; p++) {
+    if (p === playerIdx) state.scores[p] += gangBase * 3;
+    else state.scores[p] -= gangBase;
+  }
+  const gangName = (gangType === 'angang' && baseId === 27) ? '红中杠' : gangType;
+  state.gangLog.push({ player: playerIdx, type: gangName, score: gangBase * 3 });
 
   state.lastDiscard = -1;
   playSound('gang');
 
   if (playerIdx === 0) {
+    state.hands[0] = sortHand(state.hands[0]);
     state.canGang = false;
     state.canHu = false;
     state.canPeng = false;
+    state.selectedIdx = -1;
     updateButtons();
   }
   render();
+
+  // Return gang info for 抢杠胡 check by caller
+  return { gangType, baseId, gangTile: gangType === 'gang' ? tile : baseId };
+}
+
+function performQiangGangHu(playerIdx, tile, gangPlayer) {
+  // 抢杠胡: the gang tile goes to the hu player
+  state.hands[playerIdx].push(tile);
+  state.winner = playerIdx;
+  state.winType = 'qiangganghu';
+  state.huTile = tile;
+  state.phase = 'gameOver';
+  playSound('hu');
+  endGame(playerIdx, 'qiangganghu', gangPlayer);
+}
+
+function checkQiangGangHu(gangPlayer, gangTile, gangType) {
+  // Only 明杠/补杠 can be robbed (not 暗杠)
+  if (gangType === 'angang') return false;
+
+  // Check if any other player can hu with the gang tile
+  for (let p = 0; p < 4; p++) {
+    if (p === gangPlayer) continue;
+    const testHand = [...state.hands[p], gangTile];
+    if (canHu(testHand, state.melds[p]).canHu) {
+      if (p === 0) {
+        // Ask player
+        state.canHu = true;
+        state.pendingActions = ['hu', 'pass'];
+        state.qiangGangTile = gangTile;
+        state.qiangGangPlayer = gangPlayer;
+        setStatus('可以抢杠胡！');
+        state.phase = 'playerTurn';
+        state.turnPhase = 'response';
+        updateButtons();
+        render();
+        return true;
+      } else {
+        // AI auto hu
+        setTimeout(() => performQiangGangHu(p, gangTile, gangPlayer), 500);
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 function nextTurn(fromPlayer) {
@@ -1234,6 +1560,7 @@ function playerPass() {
   state.canHu = false;
   state.canGang = false;
   state.canPeng = false;
+  state.selectedIdx = -1;
   state.pendingActions = [];
   updateButtons();
 
@@ -1255,11 +1582,13 @@ function endGame(winner, type, dianpaoPlayer) {
     score.textContent = '本局不计分';
   } else {
     const isPlayerWin = (winner === 0);
-    const points = calcScore(type);
+    const { fan, typeName, points } = calcScore(state.hands[winner], state.melds[winner], type);
 
     title.textContent = isPlayerWin ? '🎉 你赢了！' : `AI ${winner} 胡了`;
-    let detailText = type === 'zimo' ? '自摸' : '点炮';
-    detailText += `\n${tileName(state.huTile)}`;
+
+    // 显示牌型名称和番数
+    let detailText = `${typeName}（${fan}番）`;
+    detailText += `\n胡牌: ${tileName(state.huTile)}`;
 
     // Show winning hand
     const winHand = sortHand(state.hands[winner]);
@@ -1268,34 +1597,44 @@ function endGame(winner, type, dianpaoPlayer) {
 
     if (isPlayerWin) {
       if (type === 'zimo') {
-        // Each other player pays 3
+        // 自摸：三家各按 底分(10) × 总番数 付给胡牌者
         const total = points * 3;
         state.scores[0] += total;
         for (let p = 1; p < 4; p++) state.scores[p] -= points;
-        score.textContent = `+${total} 分 (自摸×3)`;
+        let scoreText = `底分10 × ${fan}番 = ${points}分/家\n自摸三家付: +${total}分`;
+        if (state.gangLog.length > 0) scoreText += `\n杠分已计入总分`;
+        score.textContent = scoreText;
       } else {
-        // Dianpao player pays 1
+        // 点炮：放炮者按 底分(10) × 总番数 付给胡牌者
         state.scores[0] += points;
         state.scores[dianpaoPlayer] -= points;
-        score.textContent = `+${points} 分 (点炮)`;
+        let scoreText = `底分10 × ${fan}番 = ${points}分\n点炮者付: +${points}分`;
+        if (state.gangLog.length > 0) scoreText += `\n杠分已计入总分`;
+        score.textContent = scoreText;
       }
     } else {
       if (type === 'zimo') {
-        // Each other player pays 3
+        // AI自摸：三家各付
         for (let p = 0; p < 4; p++) {
           if (p === winner) state.scores[p] += points * 3;
           else state.scores[p] -= points;
         }
-        score.textContent = `-${points} 分`;
+        let scoreText = `${typeName}（${fan}番）\n你付 ${points}分 (三家各付)`;
+        if (state.gangLog.length > 0) scoreText += `\n杠分已计入总分`;
+        score.textContent = scoreText;
       } else {
         if (dianpaoPlayer === 0) {
           state.scores[0] -= points;
           state.scores[winner] += points;
-          score.textContent = `-${points} 分 (你点炮)`;
+          let scoreText = `${typeName}（${fan}番）\n你点炮: -${points}分`;
+          if (state.gangLog.length > 0) scoreText += `\n杠分已计入总分`;
+          score.textContent = scoreText;
         } else {
           state.scores[dianpaoPlayer] -= points;
           state.scores[winner] += points;
-          score.textContent = `AI ${dianpaoPlayer} 点炮`;
+          let scoreText = `${typeName}（${fan}番）\nAI ${dianpaoPlayer} 点炮`;
+          if (state.gangLog.length > 0) scoreText += `\n杠分已计入总分`;
+          score.textContent = scoreText;
         }
       }
     }
@@ -1309,7 +1648,7 @@ function endGame(winner, type, dianpaoPlayer) {
 }
 
 function updateScoreBar() {
-  const names = ['你', '东AI', '北AI', '西AI'];
+  const names = ['你(南)', '北AI', '东AI', '西AI'];
   let text = '红中麻将 | ';
   for (let i = 0; i < 4; i++) {
     text += `${names[i]}: ${state.scores[i]}  `;
