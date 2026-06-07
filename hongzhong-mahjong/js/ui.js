@@ -104,11 +104,28 @@ window.UI = (function() {
     }
   }
 
+  let touchHandled = false; // 防重复标志
+
   function setupInputHandlers() {
-    canvas.addEventListener('click', handleClick);
-    canvas.addEventListener('touchstart', function(e) {
-      e.preventDefault();
+    // 桌面端点击
+    canvas.addEventListener('click', function(e) {
+      if (touchHandled) { touchHandled = false; return; }
       handleClick(e);
+    });
+    // 触摸：reset 标志 → 处理触摸 → 稍后click进来时被拦截
+    canvas.addEventListener('touchstart', function() {
+      touchHandled = false;
+    }, { passive: true });
+    canvas.addEventListener('touchend', function(e) {
+      e.preventDefault();
+      touchHandled = true;
+      const touch = e.changedTouches[0];
+      if (!touch) return;
+      handleClick({
+        clientX: touch.clientX,
+        clientY: touch.clientY,
+        preventDefault: () => {},
+      });
     }, { passive: false });
 
     // 胡牌按钮
