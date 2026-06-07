@@ -27,10 +27,6 @@ window.UI = (function() {
     const btnGang = document.getElementById('btnGang');
     const btnPeng = document.getElementById('btnPeng');
     const btnPass = document.getElementById('btnPass');
-    const overlay = document.getElementById('ui-overlay');
-
-    const hasAction = st.canHu || st.canGang || st.canPeng;
-    overlay.style.display = hasAction ? 'flex' : 'none';
 
     btnHu.disabled = !st.canHu;
     btnGang.disabled = !st.canGang;
