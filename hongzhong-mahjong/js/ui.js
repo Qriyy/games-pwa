@@ -103,17 +103,9 @@ window.UI = (function() {
   }
 
   function setupInputHandlers() {
-    // 桌面：click
+    // 统一用 click 处理，桌面和手机都能用
     canvas.addEventListener('click', handleClick);
-
-    // 手机：touchstart抑制默认→touchend处理
-    canvas.addEventListener('touchstart', function(e) {
-      e.preventDefault(); // 阻止后续click事件
-    }, { passive: false });
-    canvas.addEventListener('touchend', function(e) {
-      const t = e.changedTouches[0];
-      if (t) handleClick({ clientX: t.clientX, clientY: t.clientY });
-    });
+  }
 
     // 胡牌按钮
     document.getElementById('btnHu').addEventListener('click', () => {
