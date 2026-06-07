@@ -98,16 +98,16 @@ canvas { display: block; }
   #btnNewGame { font-size: 11px; padding: 4px 12px; bottom: 10px; left: 8px; }
 
   /* 操作按钮 — 移动端加大间距和触摸区域 */
-  /* 按钮移到屏幕中央，不挡手牌 */
-  #ui-overlay { gap: 12px; padding: 10px 12px; bottom: 40%; }
+  /* 按钮贴在底部，始终可见 */
+  #ui-overlay { gap: 8px; padding: 4px 8px 10px; bottom: 0; }
   #ui-overlay button {
-    padding: 16px 18px; font-size: 22px; min-width: 72px; min-height: 56px;
-    border-radius: 16px;
+    padding: 14px 16px; font-size: 20px; min-width: 66px; min-height: 50px;
+    border-radius: 14px;
   }
-  #ui-overlay button:disabled { opacity: 0.15; }
+  #ui-overlay button:disabled { opacity: 0.12; }
   #ui-overlay button#btnHu:not(:disabled) {
-    box-shadow: 0 0 20px rgba(232,83,63,0.5);
-    border-width: 3px; font-size: 24px;
+    box-shadow: 0 0 16px rgba(232,83,63,0.5);
+    border-width: 2.5px; font-size: 22px;
   }
 
   #result-box { padding: 16px 12px; max-width: 320px; }
