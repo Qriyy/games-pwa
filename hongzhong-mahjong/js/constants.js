@@ -85,8 +85,8 @@ window.Constants = (function() {
       TILE_H:       59,       // 玩家手牌高度
       DISCARD_W:    28,       // 弃牌宽度
       DISCARD_H:    37,       // 弃牌高度
-      AI_TILE_W:    22,       // AI牌背宽度
-      AI_TILE_H:    30,       // AI牌背高度
+      AI_TILE_W:    16,       // AI牌背宽度（紧凑）
+      AI_TILE_H:    22,       // AI牌背高度（紧凑）
       MELD_W:       24,       // 副露牌宽度
       MELD_H:       32,       // 副露牌高度
     },
