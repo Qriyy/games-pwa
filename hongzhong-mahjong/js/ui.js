@@ -73,31 +73,50 @@ window.UI = (function() {
     };
   }
 
+  let debugMsg = '';
+
   function handleClick(e) {
     const st = s();
-    if (st.phase !== 'playerTurn') return;
-
     const pos = getPointerPos(e);
 
-    if (st.turnPhase === 'discard' && st._playerTilePositions) {
-      for (let i = st._playerTilePositions.length - 1; i >= 0; i--) {
-        const tp = st._playerTilePositions[i];
-        if (pos.x >= tp.x && pos.x <= tp.x + tp.w && pos.y >= tp.y && pos.y <= tp.y + tp.h) {
-          if (st.selectedIdx === i) {
-            playerDiscard(i);
-          } else {
-            st.selectedIdx = i;
-            playSound('click');
-            render();
-          }
-          return;
+    if (st.phase !== 'playerTurn') {
+      debugMsg = `非玩家回合 phase=${st.phase} turn=${st.turnPhase} cur=${st.currentPlayer}`;
+      render(); return;
+    }
+
+    if (st.turnPhase !== 'discard') {
+      debugMsg = `非出牌阶段 turn=${st.turnPhase}`;
+      render(); return;
+    }
+
+    if (!st._playerTilePositions || st._playerTilePositions.length === 0) {
+      debugMsg = `无牌位 hand=${st.hands[0].length}`;
+      render(); return;
+    }
+
+    const first = st._playerTilePositions[0];
+    const last = st._playerTilePositions[st._playerTilePositions.length-1];
+    debugMsg = `点击(${pos.x.toFixed(0)},${pos.y.toFixed(0)}) 牌x[${first.x.toFixed(0)}-${(last.x+last.w).toFixed(0)}] y[${first.y.toFixed(0)}-${(first.y+first.h).toFixed(0)}]`;
+
+    for (let i = st._playerTilePositions.length - 1; i >= 0; i--) {
+      const tp = st._playerTilePositions[i];
+      if (pos.x >= tp.x && pos.x <= tp.x + tp.w && pos.y >= tp.y && pos.y <= tp.y + tp.h) {
+        debugMsg = `命中牌${i}`;
+        if (st.selectedIdx === i) {
+          playerDiscard(i);
+        } else {
+          st.selectedIdx = i;
+          playSound('click');
+          render();
         }
-      }
-      if (st.selectedIdx >= 0) {
-        st.selectedIdx = -1;
-        render();
+        return;
       }
     }
+    if (st.selectedIdx >= 0) {
+      st.selectedIdx = -1;
+      render();
+    }
+    render();
   }
 
   function setupInputHandlers() {
@@ -200,5 +219,6 @@ window.UI = (function() {
   return {
     aiDirectionName, setStatus, updateButtons, updateScoreBar, playSound,
     init,
+    get debugMsg() { return debugMsg; },
   };
 })();

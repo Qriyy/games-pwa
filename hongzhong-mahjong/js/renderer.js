@@ -248,6 +248,17 @@ window.Renderer = (function() {
     ctx.fillRect(0, 0, W, H);
     if (isPortrait) { renderPortrait(); }
     else { renderLandscape(); }
+
+    // 调试信息显示
+    try {
+      const msg = window.UI && window.UI.debugMsg;
+      if (msg) {
+        ctx.fillStyle = 'rgba(255,0,0,0.9)';
+        ctx.font = 'bold 13px monospace';
+        ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+        ctx.fillText(msg, 4, 4);
+      }
+    } catch(e) {}
   }
 
   function renderLandscape() {
