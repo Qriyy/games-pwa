@@ -135,6 +135,15 @@ window.GameFlow = (function() {
     st.currentPlayer = playerIdx;
     try { render(); } catch(e) { console.error('AI渲染异常:', e); }
 
+    // 安全定时器：3秒后如果还卡在aiTurn就强制推进
+    if (_aiSafetyTimer) clearTimeout(_aiSafetyTimer);
+    _aiSafetyTimer = setTimeout(() => {
+      if (s().phase === 'aiTurn') {
+        console.warn('AI超时，强制推进');
+        nextTurn(playerIdx);
+      }
+    }, 3000);
+
     setTimeout(() => {
       try {
         if (st.deck.length === 0) {
@@ -197,7 +206,7 @@ window.GameFlow = (function() {
         checkResponses(playerIdx, st.lastDiscard);
       } catch(err) {
         // 任何异常都强制推进到下一回合，防止游戏卡死
-        console.error('AI回合异常:', err);
+        console.error('AI回合异常:', err.message, err.stack);
         nextTurn(playerIdx);
       }
     }, 500 + Math.random() * 400);
@@ -348,18 +357,33 @@ window.GameFlow = (function() {
     nextTurn(discardPlayer);
   }
 
+  let _aiSafetyTimer = null;
+
   function nextTurn(fromPlayer) {
     const st = s();
     let next = (fromPlayer + 1) % 4;
     st.currentPlayer = next;
     st.lastDiscard = -1;
 
-    if (next === 0) {
+    // 清除安全定时器
+    if (_aiSafetyTimer) { clearTimeout(_aiSafetyTimer); _aiSafetyTimer = null; }
+
+    try {
+      if (next === 0) {
+        st.phase = 'playerTurn';
+        st.turnPhase = 'draw';
+        drawTileFromDeck(0);
+      } else {
+        aiTurn(next);
+      }
+    } catch(err) {
+      console.error('nextTurn异常:', err);
+      // 强制切到玩家回合
       st.phase = 'playerTurn';
-      st.turnPhase = 'draw';
-      drawTileFromDeck(0);
-    } else {
-      aiTurn(next);
+      st.turnPhase = 'discard';
+      st.selectedIdx = -1;
+      window.UI.updateButtons();
+      render();
     }
   }
 
