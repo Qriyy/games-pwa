@@ -199,10 +199,6 @@ window.UI = (function() {
     window.state.dealerIdx = Math.floor(Math.random() * 4);
     startNewGame();
 
-    // 后台预加载牌图
-    window.TileAssets.preload(() => {
-      window.Renderer.render();
-    });
   }
 
   return {
