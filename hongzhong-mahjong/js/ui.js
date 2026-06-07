@@ -95,13 +95,12 @@ window.UI = (function() {
   }
 
   function setupInputHandlers() {
-    // 桌面：click
+    // click 桌面+手机都能用
     canvas.addEventListener('click', handleClick);
-    // 手机：touchstart 立即处理，阻止后续300ms的click重复
+    // 手机端 touchstart 零延迟处理（不阻止click也好，两个都能触发无坏影响）
     canvas.addEventListener('touchstart', function(e) {
-      e.preventDefault();
       handleClick(e);
-    }, { passive: false });
+    }, { passive: true });
 
     // 胡牌按钮
     document.getElementById('btnHu').addEventListener('click', () => {
