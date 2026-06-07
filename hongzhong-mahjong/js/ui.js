@@ -101,13 +101,12 @@ window.UI = (function() {
   }
 
   function setupInputHandlers() {
-    // 手机端：touchend 处理，阻止后续 click 重复触发
-    canvas.addEventListener('touchend', function(e) {
-      e.preventDefault();       // 阻止浏览器合成后续 click
+    // pointerdown 统一处理鼠标和触摸，立即响应
+    // touch-action:none 已在 CSS 中设置，确保 touch 不被浏览器拦截
+    canvas.addEventListener('pointerdown', function(e) {
+      e.preventDefault();
       handleClick(e);
-    }, { passive: false });     // passive:false 才能 preventDefault
-    // 桌面端：click 正常触发（touchend 已阻止所以手机不会走到这里）
-    canvas.addEventListener('click', handleClick);
+    });
 
     // 胡牌按钮
     document.getElementById('btnHu').addEventListener('click', () => {
