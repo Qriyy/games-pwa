@@ -36,14 +36,10 @@ canvas { display: block; }
 /* ====== 操作按钮 ====== */
 #ui-overlay {
   position: fixed; bottom: 0; left: 0; right: 0;
-  display: flex; justify-content: center; gap: 14px;
+  display: none; justify-content: center; gap: 14px;
   padding: 8px 10px 14px; z-index: 10;
   pointer-events: none;
   background: linear-gradient(transparent, rgba(13,17,23,0.92) 40%);
-  opacity: 0; visibility: hidden;
-}
-#ui-overlay.visible {
-  opacity: 1; visibility: visible;
 }
 #ui-overlay button {
   pointer-events: auto;

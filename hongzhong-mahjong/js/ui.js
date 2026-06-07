@@ -35,13 +35,9 @@ window.UI = (function() {
     // 过按钮只在 response 阶段启用
     btnPass.disabled = !(st.turnPhase === 'response' && (st.canHu || st.canGang || st.canPeng));
 
-    // 有任何可用按钮就显示，否则隐藏
+    // 有可用按钮就显示，否则隐藏
     const anyEnabled = !btnHu.disabled || !btnGang.disabled || !btnPeng.disabled || !btnPass.disabled;
-    if (anyEnabled) {
-      overlay.classList.add('visible');
-    } else {
-      overlay.classList.remove('visible');
-    }
+    overlay.style.display = anyEnabled ? 'flex' : 'none';
   }
 
   function updateScoreBar() {
