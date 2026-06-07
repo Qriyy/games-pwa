@@ -58,7 +58,7 @@ window.GameFlow = (function() {
     }
 
     window.UI.updateButtons();
-    render();
+    try { render(); } catch(e) { console.error('startNewGame渲染异常:', e); }
 
     if (st.dealerIdx !== 0) {
       setTimeout(() => aiTurn(st.dealerIdx), 800);
@@ -96,7 +96,7 @@ window.GameFlow = (function() {
       window.UI.playSound('draw');
     }
 
-    render();
+    try { render(); } catch(e) { console.error('drawTile渲染异常:', e); }
     return tile;
   }
 
@@ -133,6 +133,7 @@ window.GameFlow = (function() {
     const st = s();
     st.phase = 'aiTurn';
     st.currentPlayer = playerIdx;
+    st._aiStartTime = Date.now(); // 健康检查用
     try { render(); } catch(e) { console.error('AI渲染异常:', e); }
 
     // 安全定时器：3秒后如果还卡在aiTurn就强制推进
@@ -364,6 +365,7 @@ window.GameFlow = (function() {
     let next = (fromPlayer + 1) % 4;
     st.currentPlayer = next;
     st.lastDiscard = -1;
+    st._aiStartTime = null; // 清除健康检查时间戳
 
     // 清除安全定时器
     if (_aiSafetyTimer) { clearTimeout(_aiSafetyTimer); _aiSafetyTimer = null; }
