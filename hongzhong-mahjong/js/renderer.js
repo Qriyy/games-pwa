@@ -84,15 +84,17 @@ window.Renderer = (function() {
     }
   }
 
+  const { CN_NUMS, SUIT_CN, TONG_DOTS } = window.Constants;
+
   // ======================================================================
-  //  牌面绘制（优化版，带阴影）
+  //  牌面绘制（真实麻将风格）
   // ======================================================================
 
   function drawTile(x, y, w, h, tileId, faceUp, selected, isNew) {
-    const r = 4;
+    const r = Math.min(w, h) * 0.08;
     let drawY = y;
     if (selected) drawY -= 12 * sc;
-    if (isNew) drawY -= 8 * sc; // 新摸的牌略高
+    if (isNew) drawY -= 8 * sc;
 
     ctx.save();
     if (selected || isNew) {
@@ -122,47 +124,130 @@ window.Renderer = (function() {
       return;
     }
 
-    // ——— 牌面 ———
+    // ====== 外框（木质） ======
     drawRoundedRect(x, drawY, w, h, r);
-    const grad = ctx.createLinearGradient(x, drawY, x, drawY + h);
-    grad.addColorStop(0, C.TILE_FACE);
-    grad.addColorStop(0.85, C.TILE_DARK);
-    grad.addColorStop(1, '#D0C4A8');
-    ctx.fillStyle = grad;
+    ctx.fillStyle = '#D4C4A0';
     ctx.fill();
-    ctx.strokeStyle = '#B8A88A';
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = '#A89070';
+    ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    ctx.restore(); // 恢复阴影状态
+    // ====== 内凹面（象牙白） ======
+    const inset = 3;
+    drawRoundedRect(x + inset, drawY + inset, w - inset * 2, h - inset * 2, r * 0.6);
+    const faceGrad = ctx.createLinearGradient(x, drawY, x, drawY + h);
+    faceGrad.addColorStop(0, '#FFFDF5');
+    faceGrad.addColorStop(0.7, '#F5EDD8');
+    faceGrad.addColorStop(1, '#E8DDC0');
+    ctx.fillStyle = faceGrad;
+    ctx.fill();
+    ctx.strokeStyle = '#C8B890';
+    ctx.lineWidth = 0.7;
+    ctx.stroke();
 
-    // ——— 文字 ———
+    ctx.restore(); // 恢复阴影
+
+    const cx = x + w / 2;
+    const cy = drawY + h / 2;
+
     if (isHongzhong(tileId)) {
-      ctx.fillStyle = C.RED;
-      ctx.font = `bold ${Math.floor(h * 0.55)}px "Microsoft YaHei", "KaiTi", serif`;
+      // ====== 红中 ======
+      // 红色内框
+      ctx.strokeStyle = 'rgba(200, 50, 30, 0.5)';
+      ctx.lineWidth = w * 0.04;
+      drawRoundedRect(x + inset + 2, drawY + inset + 2, w - inset * 2 - 4, h - inset * 2 - 4, r * 0.5);
+      ctx.stroke();
+
+      ctx.fillStyle = '#C43B2A';
+      ctx.font = `bold ${Math.floor(h * 0.5)}px "KaiTi", "STKaiti", "Microsoft YaHei", serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('中', x + w / 2, drawY + h * 0.48);
-      // 红中红色外框装饰
-      ctx.strokeStyle = 'rgba(196,59,42,0.15)';
-      ctx.lineWidth = 2;
-      drawRoundedRect(x + 3, drawY + 3, w - 6, h - 6, r - 1);
-      ctx.stroke();
+      ctx.fillText('中', cx, drawY + h * 0.46);
     } else {
       const suit = tileSuit(tileId);
       const num = tileNumber(tileId);
       const color = SUIT_COLORS[suit];
+      const suitCN = SUIT_CN[suit];
+      const cnNum = CN_NUMS[num - 1];
 
-      // 数字
+      // ====== 顶角数字 ======
+      const cornerSize = Math.floor(h * 0.18);
       ctx.fillStyle = color;
-      ctx.font = `bold ${Math.floor(h * 0.36)}px "Microsoft YaHei", "KaiTi", serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(String(num), x + w / 2, drawY + h * 0.32);
+      ctx.font = `bold ${cornerSize}px "Microsoft YaHei", sans-serif`;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText(`${num}`, x + inset + 4, drawY + inset + 2);
 
-      // 花色
-      ctx.font = `${Math.floor(h * 0.26)}px "Microsoft YaHei", "KaiTi", serif`;
-      ctx.fillText(SUIT_NAMES[suit], x + w / 2, drawY + h * 0.7);
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(`${num}`, x + w - inset - 4, drawY + h - inset - 2);
+
+      // ====== 中心图案 ======
+      const centerSize = Math.floor(h * 0.32);
+
+      if (suit === 'wan') {
+        // 万：中文数字
+        ctx.fillStyle = color;
+        ctx.font = `bold ${centerSize}px "KaiTi", "STKaiti", "Microsoft YaHei", serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(cnNum, cx, cy);
+      } else if (suit === 'tiao') {
+        // 条：画竖线（竹子）
+        const dotR = Math.min(w, h) * 0.04;
+        const cols = num <= 3 ? 1 : (num <= 6 ? 2 : 3);
+        const rows = Math.ceil(num / cols);
+        const cellW = (w * 0.55) / cols;
+        const cellH = (h * 0.55) / rows;
+        const gridStartX = cx - (cellW * (cols - 1)) / 2;
+        const gridStartY = cy - (cellH * (rows - 1)) / 2;
+
+        for (let i = 0; i < num; i++) {
+          const col = i % cols;
+          const row = Math.floor(i / cols);
+          const dx = gridStartX + col * cellW + cellW / 2;
+          const dy = gridStartY + row * cellH + cellH / 2;
+          // 画带小节的竹子
+          ctx.strokeStyle = '#1A6A2A';
+          ctx.lineWidth = Math.max(dotR, 1.2);
+          ctx.beginPath();
+          ctx.moveTo(dx, dy - cellH * 0.35);
+          ctx.lineTo(dx, dy + cellH * 0.35);
+          ctx.stroke();
+          // 竹节
+          ctx.lineWidth = Math.max(dotR * 1.5, 1.8);
+          ctx.beginPath();
+          ctx.moveTo(dx - dotR * 1.2, dy);
+          ctx.lineTo(dx + dotR * 1.2, dy);
+          ctx.stroke();
+          // 顶部小圆
+          ctx.fillStyle = '#1A6A2A';
+          ctx.beginPath();
+          ctx.arc(dx, dy - cellH * 0.35, dotR * 1.2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else if (suit === 'tong') {
+        // 筒：画圆点
+        const dots = TONG_DOTS[num];
+        const dotR = Math.min(w, h) * 0.07;
+        const unit = Math.min(w, h) * 0.12;
+
+        for (const [dr, dc] of dots) {
+          const dx = cx + dc * unit;
+          const dy = cy + dr * unit;
+          // 外圈
+          ctx.strokeStyle = '#8A2A1A';
+          ctx.lineWidth = Math.max(dotR * 0.3, 1);
+          ctx.beginPath();
+          ctx.arc(dx, dy, dotR, 0, Math.PI * 2);
+          ctx.stroke();
+          // 内圈填充
+          ctx.fillStyle = '#8A2A1A';
+          ctx.beginPath();
+          ctx.arc(dx, dy, dotR * 0.45, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
     }
   }
 
