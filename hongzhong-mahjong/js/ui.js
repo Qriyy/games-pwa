@@ -193,12 +193,17 @@ window.UI = (function() {
     window.Renderer.resize();
     setStatus('红中麻将');
 
-    window.state.dealerIdx = Math.floor(Math.random() * 4);
-    setTimeout(() => {
-      // 隐藏顶部状态栏
-      document.getElementById('status-bar').classList.add('hide');
-      startNewGame();
-    }, 300);
+    // 预加载真实牌图素材
+    window.TileAssets.preload(() => {
+      console.log('牌图素材加载完成');
+      window.Renderer.render();
+      // 素材就绪后短暂延迟启动游戏
+      setTimeout(() => {
+        document.getElementById('status-bar').classList.add('hide');
+        window.state.dealerIdx = Math.floor(Math.random() * 4);
+        startNewGame();
+      }, 200);
+    });
   }
 
   return {

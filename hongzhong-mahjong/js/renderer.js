@@ -87,7 +87,7 @@ window.Renderer = (function() {
   const { CN_NUMS, SUIT_CN, TONG_DOTS } = window.Constants;
 
   // ======================================================================
-  //  牌面绘制（真实麻将风格）
+  //  牌面绘制（优先使用真实牌图素材）
   // ======================================================================
 
   function drawTile(x, y, w, h, tileId, faceUp, selected, isNew) {
@@ -103,28 +103,65 @@ window.Renderer = (function() {
       ctx.shadowOffsetY = 0;
     }
 
+    // ====== 牌背 ======
     if (!faceUp) {
-      // ——— 牌背 ———
-      drawRoundedRect(x, drawY, w, h, r);
-      const grad = ctx.createLinearGradient(x, drawY, x, drawY + h);
-      grad.addColorStop(0, C.TILE_BACK_LIGHT);
-      grad.addColorStop(0.3, C.TILE_BACK);
-      grad.addColorStop(0.7, C.TILE_BACK);
-      grad.addColorStop(1, '#0F1F30');
-      ctx.fillStyle = grad;
-      ctx.fill();
-      ctx.strokeStyle = '#0D1A2A';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-      // 牌背花纹
-      ctx.fillStyle = 'rgba(255,255,255,0.06)';
-      drawRoundedRect(x + 5, drawY + 5, w - 10, h - 10, r - 1);
-      ctx.fill();
+      const backImg = window.TileAssets ? window.TileAssets.getBack() : null;
+      if (backImg) {
+        // 使用真实牌背图
+        drawRoundedRect(x, drawY, w, h, r);
+        ctx.fillStyle = '#0D1A2A';
+        ctx.fill();
+        ctx.save();
+        ctx.beginPath();
+        drawRoundedRect(x, drawY, w, h, r);
+        ctx.clip();
+        ctx.drawImage(backImg, x, drawY, w, h);
+        ctx.restore();
+      } else {
+        // Canvas 绘制牌背
+        drawRoundedRect(x, drawY, w, h, r);
+        const grad = ctx.createLinearGradient(x, drawY, x, drawY + h);
+        grad.addColorStop(0, C.TILE_BACK_LIGHT);
+        grad.addColorStop(0.3, C.TILE_BACK);
+        grad.addColorStop(0.7, C.TILE_BACK);
+        grad.addColorStop(1, '#0F1F30');
+        ctx.fillStyle = grad;
+        ctx.fill();
+        ctx.strokeStyle = '#0D1A2A';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(255,255,255,0.06)';
+        drawRoundedRect(x + 5, drawY + 5, w - 10, h - 10, r - 1);
+        ctx.fill();
+      }
       ctx.restore();
       return;
     }
 
-    // ====== 外框（木质） ======
+    // ====== 牌面：尝试使用真实素材 ======
+    const tileImg = window.TileAssets ? window.TileAssets.getTile(tileId) : null;
+
+    if (tileImg) {
+      // 使用真实牌面图
+      drawRoundedRect(x, drawY, w, h, r);
+      ctx.fillStyle = '#FFFDF5';
+      ctx.fill();
+      ctx.save();
+      ctx.beginPath();
+      drawRoundedRect(x, drawY, w, h, r);
+      ctx.clip();
+      ctx.drawImage(tileImg, x, drawY, w, h);
+      ctx.restore();
+      // 轻微边框
+      ctx.strokeStyle = 'rgba(0,0,0,0.12)';
+      ctx.lineWidth = 1;
+      drawRoundedRect(x, drawY, w, h, r);
+      ctx.stroke();
+      ctx.restore();
+      return;
+    }
+
+    // ====== 后备：Canvas 手绘牌面 ======
     drawRoundedRect(x, drawY, w, h, r);
     ctx.fillStyle = '#D4C4A0';
     ctx.fill();
@@ -132,7 +169,6 @@ window.Renderer = (function() {
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    // ====== 内凹面（象牙白） ======
     const inset = 3;
     drawRoundedRect(x + inset, drawY + inset, w - inset * 2, h - inset * 2, r * 0.6);
     const faceGrad = ctx.createLinearGradient(x, drawY, x, drawY + h);
@@ -145,21 +181,18 @@ window.Renderer = (function() {
     ctx.lineWidth = 0.7;
     ctx.stroke();
 
-    ctx.restore(); // 恢复阴影
+    ctx.restore();
 
     const cx = x + w / 2;
     const cy = drawY + h / 2;
 
     if (isHongzhong(tileId)) {
-      // ====== 红中 ======
-      // 红色内框
       ctx.strokeStyle = 'rgba(200, 50, 30, 0.5)';
       ctx.lineWidth = w * 0.04;
       drawRoundedRect(x + inset + 2, drawY + inset + 2, w - inset * 2 - 4, h - inset * 2 - 4, r * 0.5);
       ctx.stroke();
-
       ctx.fillStyle = '#C43B2A';
-      ctx.font = `bold ${Math.floor(h * 0.5)}px "KaiTi", "STKaiti", "Microsoft YaHei", serif`;
+      ctx.font = `bold ${Math.floor(h * 0.5)}px "KaiTi", "Microsoft YaHei", serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText('中', cx, drawY + h * 0.46);
@@ -167,84 +200,66 @@ window.Renderer = (function() {
       const suit = tileSuit(tileId);
       const num = tileNumber(tileId);
       const color = SUIT_COLORS[suit];
-      const suitCN = SUIT_CN[suit];
-      const cnNum = CN_NUMS[num - 1];
 
-      // ====== 顶角数字 ======
       const cornerSize = Math.floor(h * 0.18);
       ctx.fillStyle = color;
       ctx.font = `bold ${cornerSize}px "Microsoft YaHei", sans-serif`;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'top';
       ctx.fillText(`${num}`, x + inset + 4, drawY + inset + 2);
-
       ctx.textAlign = 'right';
       ctx.textBaseline = 'bottom';
       ctx.fillText(`${num}`, x + w - inset - 4, drawY + h - inset - 2);
 
-      // ====== 中心图案 ======
       const centerSize = Math.floor(h * 0.32);
-
       if (suit === 'wan') {
-        // 万：中文数字
         ctx.fillStyle = color;
-        ctx.font = `bold ${centerSize}px "KaiTi", "STKaiti", "Microsoft YaHei", serif`;
+        ctx.font = `bold ${centerSize}px "KaiTi", "Microsoft YaHei", serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(cnNum, cx, cy);
+        ctx.fillText(CN_NUMS[num - 1], cx, cy);
       } else if (suit === 'tiao') {
-        // 条：画竖线（竹子）
         const dotR = Math.min(w, h) * 0.04;
         const cols = num <= 3 ? 1 : (num <= 6 ? 2 : 3);
         const rows = Math.ceil(num / cols);
         const cellW = (w * 0.55) / cols;
         const cellH = (h * 0.55) / rows;
-        const gridStartX = cx - (cellW * (cols - 1)) / 2;
-        const gridStartY = cy - (cellH * (rows - 1)) / 2;
-
+        const gsx = cx - (cellW * (cols - 1)) / 2;
+        const gsy = cy - (cellH * (rows - 1)) / 2;
         for (let i = 0; i < num; i++) {
-          const col = i % cols;
-          const row = Math.floor(i / cols);
-          const dx = gridStartX + col * cellW + cellW / 2;
-          const dy = gridStartY + row * cellH + cellH / 2;
-          // 画带小节的竹子
+          const dx = gsx + (i % cols) * cellW + cellW / 2;
+          const dy = gsy + Math.floor(i / cols) * cellH + cellH / 2;
           ctx.strokeStyle = '#1A6A2A';
           ctx.lineWidth = Math.max(dotR, 1.2);
           ctx.beginPath();
           ctx.moveTo(dx, dy - cellH * 0.35);
           ctx.lineTo(dx, dy + cellH * 0.35);
           ctx.stroke();
-          // 竹节
           ctx.lineWidth = Math.max(dotR * 1.5, 1.8);
           ctx.beginPath();
           ctx.moveTo(dx - dotR * 1.2, dy);
           ctx.lineTo(dx + dotR * 1.2, dy);
           ctx.stroke();
-          // 顶部小圆
           ctx.fillStyle = '#1A6A2A';
           ctx.beginPath();
           ctx.arc(dx, dy - cellH * 0.35, dotR * 1.2, 0, Math.PI * 2);
           ctx.fill();
         }
       } else if (suit === 'tong') {
-        // 筒：画圆点
         const dots = TONG_DOTS[num];
         const dotR = Math.min(w, h) * 0.07;
         const unit = Math.min(w, h) * 0.12;
-
         for (const [dr, dc] of dots) {
-          const dx = cx + dc * unit;
-          const dy = cy + dr * unit;
-          // 外圈
+          const dx2 = cx + dc * unit;
+          const dy2 = cy + dr * unit;
           ctx.strokeStyle = '#8A2A1A';
           ctx.lineWidth = Math.max(dotR * 0.3, 1);
           ctx.beginPath();
-          ctx.arc(dx, dy, dotR, 0, Math.PI * 2);
+          ctx.arc(dx2, dy2, dotR, 0, Math.PI * 2);
           ctx.stroke();
-          // 内圈填充
           ctx.fillStyle = '#8A2A1A';
           ctx.beginPath();
-          ctx.arc(dx, dy, dotR * 0.45, 0, Math.PI * 2);
+          ctx.arc(dx2, dy2, dotR * 0.45, 0, Math.PI * 2);
           ctx.fill();
         }
       }

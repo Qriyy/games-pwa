@@ -6,12 +6,13 @@ global.document = {
     getContext: () => ({
       fillStyle: null, fillRect: () => {},
       beginPath: () => {}, moveTo: () => {}, lineTo: () => {},
-      arcTo: () => {}, closePath: () => {},
+      arcTo: () => {}, closePath: () => {}, clip: () => {},
       fill: () => {}, stroke: () => {},
       createLinearGradient: () => ({ addColorStop: () => {} }),
       createRadialGradient: () => ({ addColorStop: () => {} }),
       save: () => {}, restore: () => {}, translate: () => {},
       rotate: () => {}, fillText: () => {}, arc: () => {},
+      drawImage: () => {},
       font: '', textAlign: '', textBaseline: '',
       shadowColor: '', shadowBlur: 0, shadowOffsetY: 0,
       lineWidth: 0,
@@ -31,6 +32,7 @@ global.window = global;
 window.addEventListener = () => {};
 global.navigator = { userAgent: 'node' };
 global.AudioContext = function() { this.state = 'running'; };
+global.Image = function() { this.onload = null; this.onerror = null; this.src = ''; };
 
 function loadMod(name) {
   const code = fs.readFileSync(name, 'utf8');
@@ -42,8 +44,8 @@ function loadMod(name) {
 const order = [
   'js/constants.js', 'js/tiles.js', 'js/game-state.js',
   'js/hu-detection.js', 'js/scoring.js', 'js/actions.js',
-  'js/ai-bridge.js', 'js/renderer.js', 'js/game-flow.js',
-  'js/ui.js', 'js/main.js'
+  'js/ai-bridge.js', 'js/tile-assets.js', 'js/renderer.js',
+  'js/game-flow.js', 'js/ui.js', 'js/main.js'
 ];
 
 try {
