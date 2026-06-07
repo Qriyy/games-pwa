@@ -73,22 +73,22 @@ window.Constants = (function() {
     AI_TILE_W:      30,       // AI牌背宽度
     AI_TILE_H:      40,       // AI牌背高度
     DISCARD_COLS:   7,        // 弃牌列数
-    // 移动端竖屏参数（四人对战布局）
+    // 移动端竖屏参数（参考标准麻将APP布局）
     PORTRAIT: {
-      TOP_H:        0.08,     // 顶部AI（P1对面）
-      SIDE_W:       0.10,     // 左右AI区域宽度（各P2左、P3右）
-      TABLE_H:      0.36,     // 中央桌面
-      BOTTOM_H:     0.46,     // 玩家手牌+按钮
-      AVATAR_R:     11,       // AI头像半径
-      OVERLAP:      0.10,     // 手牌重叠
-      TILE_W:       50,       // 玩家手牌宽度
-      TILE_H:       67,       // 玩家手牌高度
-      DISCARD_W:    30,       // 弃牌宽度
-      DISCARD_H:    40,       // 弃牌高度
-      AI_TILE_W:    24,       // AI牌背宽度（加大）
-      AI_TILE_H:    32,       // AI牌背高度（加大）
-      MELD_W:       16,       // 副露牌宽度
-      MELD_H:       22,       // 副露牌高度
+      TOP_H:        0.10,     // 顶部AI（对家）
+      SIDE_W:       0.12,     // 左右AI区域宽度
+      TABLE_H:      0.40,     // 中央桌面（加大放转盘+弃牌）
+      BOTTOM_H:     0.38,     // 玩家区域（手牌分两行）
+      AVATAR_R:     14,       // AI头像半径
+      OVERLAP:      0.08,     // 手牌轻微重叠
+      TILE_W:       44,       // 玩家手牌宽度
+      TILE_H:       59,       // 玩家手牌高度
+      DISCARD_W:    28,       // 弃牌宽度
+      DISCARD_H:    37,       // 弃牌高度
+      AI_TILE_W:    22,       // AI牌背宽度
+      AI_TILE_H:    30,       // AI牌背高度
+      MELD_W:       24,       // 副露牌宽度
+      MELD_H:       32,       // 副露牌高度
     },
   };
 
