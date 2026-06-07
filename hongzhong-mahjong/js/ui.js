@@ -74,34 +74,29 @@ window.UI = (function() {
   }
 
   let debugMsg = '';
+  function showDebug(msg) {
+    debugMsg = msg;
+    const el = document.getElementById('debug-overlay');
+    if (el) el.textContent = msg;
+  }
 
   function handleClick(e) {
     const st = s();
     const pos = getPointerPos(e);
+    const canvasRect = canvas.getBoundingClientRect();
 
-    if (st.phase !== 'playerTurn') {
-      debugMsg = `非玩家回合 phase=${st.phase} turn=${st.turnPhase} cur=${st.currentPlayer}`;
-      render(); return;
-    }
+    showDebug(`type=${e.type} pos(${pos.x.toFixed(0)},${pos.y.toFixed(0)}) canvas(${canvas.width}x${canvas.height}) rect(${canvasRect.width.toFixed(0)}x${canvasRect.height.toFixed(0)}) phase=${st.phase} turn=${st.turnPhase} tiles=${st._playerTilePositions?st._playerTilePositions.length:0}`);
 
-    if (st.turnPhase !== 'discard') {
-      debugMsg = `非出牌阶段 turn=${st.turnPhase}`;
-      render(); return;
-    }
+    if (st.phase !== 'playerTurn') return;
 
-    if (!st._playerTilePositions || st._playerTilePositions.length === 0) {
-      debugMsg = `无牌位 hand=${st.hands[0].length}`;
-      render(); return;
-    }
+    if (st.turnPhase !== 'discard') return;
 
-    const first = st._playerTilePositions[0];
-    const last = st._playerTilePositions[st._playerTilePositions.length-1];
-    debugMsg = `点击(${pos.x.toFixed(0)},${pos.y.toFixed(0)}) 牌x[${first.x.toFixed(0)}-${(last.x+last.w).toFixed(0)}] y[${first.y.toFixed(0)}-${(first.y+first.h).toFixed(0)}]`;
+    if (!st._playerTilePositions || st._playerTilePositions.length === 0) return;
 
     for (let i = st._playerTilePositions.length - 1; i >= 0; i--) {
       const tp = st._playerTilePositions[i];
       if (pos.x >= tp.x && pos.x <= tp.x + tp.w && pos.y >= tp.y && pos.y <= tp.y + tp.h) {
-        debugMsg = `命中牌${i}`;
+        showDebug(`命中牌${i} selected=${st.selectedIdx}`);
         if (st.selectedIdx === i) {
           playerDiscard(i);
         } else {
@@ -116,7 +111,9 @@ window.UI = (function() {
       st.selectedIdx = -1;
       render();
     }
-    render();
+    const first = st._playerTilePositions[0];
+    const last = st._playerTilePositions[st._playerTilePositions.length-1];
+    showDebug(`未命中 点击(${pos.x.toFixed(0)},${pos.y.toFixed(0)}) 牌x[${first.x.toFixed(0)}-${(last.x+last.w).toFixed(0)}] y[${first.y.toFixed(0)}-${(first.y+first.h).toFixed(0)}]`);
   }
 
   function setupInputHandlers() {
@@ -207,6 +204,11 @@ window.UI = (function() {
   function init() {
     setupInputHandlers();
     window.Renderer.resize();
+
+    // 初始调试信息
+    const rect = canvas.getBoundingClientRect();
+    showDebug(`启动完成 canvas(${canvas.width}x${canvas.height}) rect(${rect.width.toFixed(0)}x${rect.height.toFixed(0)}) innerWin(${window.innerWidth}x${window.innerHeight}) dpr=${window.devicePixelRatio}`);
+
     setStatus('红中麻将');
 
     // 立即启动游戏，牌图后台加载
