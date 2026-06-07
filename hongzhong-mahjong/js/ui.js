@@ -77,20 +77,15 @@ window.UI = (function() {
 
   function handleClick(e) {
     const st = s();
-    console.log('[点] phase:', st.phase, 'turn:', st.turnPhase, 'pos:', e.clientX, e.clientY, 'tiles:', st._playerTilePositions ? st._playerTilePositions.length : 0);
     if (st.phase !== 'playerTurn') return;
 
     const pos = getPointerPos(e);
-    console.log('[点] canvas坐标:', pos.x, pos.y);
 
     if (st.turnPhase === 'discard' && st._playerTilePositions) {
       for (let i = st._playerTilePositions.length - 1; i >= 0; i--) {
         const tp = st._playerTilePositions[i];
-        console.log('[点] 牌', i, ':', tp.x, tp.y, tp.w, tp.h);
         if (pos.x >= tp.x && pos.x <= tp.x + tp.w && pos.y >= tp.y && pos.y <= tp.y + tp.h) {
-          console.log('[点] 命中牌', i);
           if (st.selectedIdx === i) {
-            console.log('[点] 出牌!');
             playerDiscard(i);
           } else {
             st.selectedIdx = i;
@@ -100,7 +95,6 @@ window.UI = (function() {
           return;
         }
       }
-      console.log('[点] 未命中任何牌');
       if (st.selectedIdx >= 0) {
         st.selectedIdx = -1;
         render();
@@ -109,8 +103,17 @@ window.UI = (function() {
   }
 
   function setupInputHandlers() {
-    // 用 pointerdown 统一处理鼠标+触摸
-    canvas.addEventListener('pointerdown', handleClick);
+    // 桌面：click
+    canvas.addEventListener('click', handleClick);
+
+    // 手机：touchstart抑制默认→touchend处理
+    canvas.addEventListener('touchstart', function(e) {
+      e.preventDefault(); // 阻止后续click事件
+    }, { passive: false });
+    canvas.addEventListener('touchend', function(e) {
+      const t = e.changedTouches[0];
+      if (t) handleClick({ clientX: t.clientX, clientY: t.clientY });
+    });
 
     // 胡牌按钮
     document.getElementById('btnHu').addEventListener('click', () => {
