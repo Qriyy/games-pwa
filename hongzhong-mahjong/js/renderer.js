@@ -442,10 +442,11 @@ window.Renderer = (function() {
 
     const tw = lp.AI_TILE_W * sc, th = lp.AI_TILE_H * sc;
     const tileY = avY - th/2;
-    const maxTiles = Math.floor((W - avX - 80*sc) / (tw+1));
-    const show = Math.min(count, maxTiles);
-    for (let i = 0; i < show; i++) {
-      drawTile(W - (show-i)*(tw+1), tileY, tw, th, 0, false, false, false);
+    const availW = W - avX - 80*sc;
+    // 重叠步进，确保所有牌都能显示
+    const step = Math.min(tw + 1, availW / count);
+    for (let i = 0; i < count; i++) {
+      drawTile(W - (count-i)*step, tileY, tw, th, 0, false, false, false);
     }
   }
 
@@ -471,14 +472,15 @@ window.Renderer = (function() {
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
     ctx.fillText(`${['西AI','东AI'][playerIdx-2]}  ${st.scores[playerIdx]}`, avX, avY + r + 2*sc);
 
-    // 牌背纵向（底部对齐）
+    // 牌背纵向（重叠显示，确保数量对应）
     const tw = lp.AI_TILE_W * sc, th = lp.AI_TILE_H * sc;
     const tileX = avX - tw/2;
-    const maxTiles = Math.floor((topY + tableH - avY - r - 18*sc) / (th+1));
-    const show = Math.min(count, maxTiles);
-    const startY = (topY + tableH) - show*(th+1) - 4*sc;
-    for (let i = 0; i < show; i++) {
-      drawTile(tileX, startY + i*(th+1), tw, th, 0, false, false, false);
+    const availV = (topY + tableH) - (avY + r + 18*sc);
+    // 重叠步进：让所有牌都能显示出来
+    const step = Math.min(th + 1, availV / count);
+    const startY = (topY + tableH) - step * count - 4*sc;
+    for (let i = 0; i < count; i++) {
+      drawTile(tileX, startY + i*step, tw, th, 0, false, false, false);
     }
   }
 
