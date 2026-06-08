@@ -232,6 +232,7 @@ window.GameFlow = (function() {
 
   function checkResponses(discardPlayer, tile) {
     const st = s();
+    _clearAllTimers(); // 清除所有旧的AI响应定时器
 
     let huPlayers = [];
     let gangPlayers = [];
@@ -264,7 +265,7 @@ window.GameFlow = (function() {
         // AI胡
         for (const p of huPlayers) {
           if (p !== 0) {
-            setTimeout(() => {
+            _setTimer(() => {
               performHu(p, tile, discardPlayer);
               endGame(p, 'dianpao', discardPlayer);
             }, 300);
@@ -275,7 +276,7 @@ window.GameFlow = (function() {
       }
       const aiHu = huPlayers.find(p => p !== 0);
       if (aiHu !== undefined) {
-        setTimeout(() => {
+        _setTimer(() => {
           performHu(aiHu, tile, discardPlayer);
           endGame(aiHu, 'dianpao', discardPlayer);
         }, 500);
@@ -298,13 +299,13 @@ window.GameFlow = (function() {
       }
       const aiGang = gangPlayers.find(p => p !== 0);
       if (aiGang !== undefined) {
-        setTimeout(() => {
+        _setTimer(() => {
           const result = performGang(aiGang, tile, tileBaseId(tile));
           // 抢杠胡检查
           const qg = result ? checkQiangGangHu(aiGang, result.gangTile, result.gangType) : null;
           if (qg && typeof qg === 'object') {
             if (qg.player !== 0) {
-              setTimeout(() => {
+              _setTimer(() => {
                 performQiangGangHu(qg.player, qg.tile, qg.gangPlayer);
                 endGame(qg.player, 'qiangganghu', qg.gangPlayer);
               }, 300);
@@ -312,7 +313,7 @@ window.GameFlow = (function() {
             // player 0: UI 已由 checkQiangGangHu 设置
             return;
           }
-          setTimeout(() => aiTurn(aiGang), 600);
+          _setTimer(() => aiTurn(aiGang), 600);
         }, 500);
         return;
       }
@@ -333,9 +334,9 @@ window.GameFlow = (function() {
       }
       const aiPeng = pengPlayers.find(p => p !== 0);
       if (aiPeng !== undefined) {
-        setTimeout(() => {
+        _setTimer(() => {
           performPeng(aiPeng, tile, discardPlayer);
-          setTimeout(() => {
+          _setTimer(() => {
             const discardIdx = getAIDecision(st.hands[aiPeng], st.difficulty);
             let discarded;
             if (discardIdx < 0 || discardIdx >= st.hands[aiPeng].length) {
@@ -366,6 +367,24 @@ window.GameFlow = (function() {
   }
 
   let _aiSafetyTimer = null;
+  let _pendingResponseTimers = []; // 追踪所有AI响应超时
+
+  function _clearAllTimers() {
+    if (_aiSafetyTimer) { clearTimeout(_aiSafetyTimer); _aiSafetyTimer = null; }
+    _pendingResponseTimers.forEach(t => clearTimeout(t));
+    _pendingResponseTimers = [];
+  }
+
+  function _setTimer(fn, delay) {
+    const t = setTimeout(() => {
+      // 从列表中移除自己
+      const idx = _pendingResponseTimers.indexOf(t);
+      if (idx !== -1) _pendingResponseTimers.splice(idx, 1);
+      fn();
+    }, delay);
+    _pendingResponseTimers.push(t);
+    return t;
+  }
 
   // 逆时针出牌顺序：南(0)→东(3)→北(1)→西(2)→南(0)
   const TURN_ORDER = [3, 1, 2, 0]; // TURN_ORDER[0]=3 表示南之后是东
@@ -377,8 +396,8 @@ window.GameFlow = (function() {
     st.lastDiscard = -1;
     st._aiStartTime = null; // 清除健康检查时间戳
 
-    // 清除安全定时器
-    if (_aiSafetyTimer) { clearTimeout(_aiSafetyTimer); _aiSafetyTimer = null; }
+    // 清除所有旧定时器
+    _clearAllTimers();
 
     try {
       if (next === 0) {
@@ -401,6 +420,7 @@ window.GameFlow = (function() {
 
   function playerPass() {
     const st = s();
+    _clearAllTimers(); // 清除所有旧定时器
     st.canHu = false;
     st.canGang = false;
     st.canPeng = false;
@@ -417,7 +437,7 @@ window.GameFlow = (function() {
         if (p === discardPlayer) continue;
         if (canHu([...st.hands[p], tile], st.melds[p]).canHu) {
           if (shouldHu(st.hands[p], tile, st.difficulty)) {
-            setTimeout(() => {
+            _setTimer(() => {
               performHu(p, tile, discardPlayer);
               endGame(p, 'dianpao', discardPlayer);
             }, 400);
@@ -431,9 +451,9 @@ window.GameFlow = (function() {
         if (canPeng(st.hands[p], tile) && shouldPeng(st.hands[p], tile, st.difficulty)) {
           st.phase = 'aiTurn';
           st.currentPlayer = p;
-          setTimeout(() => {
+          _setTimer(() => {
             performPeng(p, tile, discardPlayer);
-            setTimeout(() => {
+            _setTimer(() => {
               const discardIdx = getAIDecision(st.hands[p], st.difficulty);
               let discarded;
               if (discardIdx < 0 || discardIdx >= st.hands[p].length) {
