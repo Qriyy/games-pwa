@@ -83,13 +83,13 @@ window.UI = (function() {
       if (st.turnPhase === 'response') {
         Actions.performGang(0, st.lastDiscard, Tiles.tileBaseId(st.lastDiscard));
         st.isAfterGang = true;
-        setTimeout(function() { GameFlow.drawTileFromDeck(0); }, 300);
+        GameFlow.drawTileFromDeck(0);
       } else {
         var gangs = HuDetection.canSelfGang(st.hands[0], st.melds[0]);
         if (gangs.length > 0) {
           Actions.performGang(0, -1, gangs[0]);
           st.isAfterGang = true;
-          setTimeout(function() { GameFlow.drawTileFromDeck(0); }, 300);
+          GameFlow.drawTileFromDeck(0);
         }
       }
     });
