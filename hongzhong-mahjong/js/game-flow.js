@@ -408,7 +408,56 @@ window.GameFlow = (function() {
     st.pendingActions = [];
     window.UI.updateButtons();
 
-    nextTurn(st.lastDiscardPlayer);
+    // 玩家过了，检查其他AI能不能碰/杠/胡这张牌
+    const tile = st.lastDiscard;
+    const discardPlayer = st.lastDiscardPlayer;
+    if (tile > 0 && discardPlayer >= 0) {
+      // 胡优先
+      for (let p = 1; p < 4; p++) {
+        if (p === discardPlayer) continue;
+        if (canHu([...st.hands[p], tile], st.melds[p]).canHu) {
+          if (shouldHu(st.hands[p], tile, st.difficulty)) {
+            setTimeout(() => {
+              performHu(p, tile, discardPlayer);
+              endGame(p, 'dianpao', discardPlayer);
+            }, 400);
+            return;
+          }
+        }
+      }
+      // 碰
+      for (let p = 1; p < 4; p++) {
+        if (p === discardPlayer) continue;
+        if (canPeng(st.hands[p], tile) && shouldPeng(st.hands[p], tile, st.difficulty)) {
+          st.phase = 'aiTurn';
+          st.currentPlayer = p;
+          setTimeout(() => {
+            performPeng(p, tile, discardPlayer);
+            setTimeout(() => {
+              const discardIdx = getAIDecision(st.hands[p], st.difficulty);
+              let discarded;
+              if (discardIdx < 0 || discardIdx >= st.hands[p].length) {
+                for (let i = 0; i < st.hands[p].length; i++) {
+                  if (!isHongzhong(st.hands[p][i])) { discarded = st.hands[p].splice(i, 1)[0]; break; }
+                }
+              } else { discarded = st.hands[p].splice(discardIdx, 1)[0]; }
+              if (discarded) {
+                st.discards[p].push(discarded);
+                st.lastDiscard = discarded;
+                st.lastDiscardPlayer = p;
+                window.UI.playSound('discard');
+                render();
+                checkResponses(p, discarded);
+              }
+            }, 500);
+          }, 400);
+          return;
+        }
+      }
+    }
+
+    // 没有AI要响应，正常下一回合
+    nextTurn(discardPlayer);
   }
 
   function endGame(winner, type, dianpaoPlayer) {
