@@ -248,17 +248,6 @@ window.Renderer = (function() {
     ctx.fillRect(0, 0, W, H);
     if (isPortrait) { renderPortrait(); }
     else { renderLandscape(); }
-
-    // 调试信息显示
-    try {
-      const msg = window.UI && window.UI.debugMsg;
-      if (msg) {
-        ctx.fillStyle = 'rgba(255,0,0,0.9)';
-        ctx.font = 'bold 13px monospace';
-        ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-        ctx.fillText(msg, 4, 4);
-      }
-    } catch(e) {}
   }
 
   function renderLandscape() {
@@ -282,21 +271,21 @@ window.Renderer = (function() {
 
   function renderPortrait() {
     const st = window.state;
-    const lp = LAYOUT.PORTRAIT;
     const cx = W / 2;
-
-    const topH    = H * lp.TOP_H;
-    const sideW   = W * lp.SIDE_W;
-    // 底部固定只占 22%（信息栏+手牌），其余都给桌面
+    const topH    = H * 0.10;
+    const sideW   = W * 0.14;
     const bottomH = H * 0.22;
-    const tableH  = H - topH - bottomH - 6 * sc;
+    const tableTop = topH;
+    const tableBot = H - bottomH;
+    const tableH  = tableBot - tableTop;
 
-    // 4个方向
-    drawPortraitTopAI(0, topH, cx);                        // P1 北（对面）
-    drawPortraitSideAI(2, 0, topH, sideW, tableH, false);  // P2 西（左）
-    drawPortraitSideAI(3, W - sideW, topH, sideW, tableH, true); // P3 东（右）
-    drawPortraitTable(topH, tableH, sideW);                 // 桌面
-    drawPortraitBottom(bottomH, H - bottomH);               // 玩家
+    drawPortraitTable(tableTop, tableH, sideW);
+    drawPortraitDiscards(st, tableTop, tableH, sideW, cx);
+    drawPortraitWall(st, cx, tableBot - 14*sc);
+    drawPortraitTopAI(st, topH, cx);
+    drawPortraitSideAI(st, 2, 0, topH, sideW, tableH, false);
+    drawPortraitSideAI(st, 3, W - sideW, topH, sideW, tableH, true);
+    drawPortraitBottom(st, bottomH);
     drawPortraitTurnIndicator(st, topH, sideW, tableH, bottomH, cx);
   }
 
@@ -446,80 +435,43 @@ window.Renderer = (function() {
   }
 
   // ======================================================================
-  //  竖屏 四人对战（参考标准麻将APP）
+  //  竖屏渲染（移动端）
   // ======================================================================
 
-  // ===== 顶部AI（P1 北家） =====
-  function drawPortraitTopAI(topY, zoneH, cx) {
-    const st = window.state, p = 1, lp = LAYOUT.PORTRAIT;
-    const isActive = st.currentPlayer === p;
-    const count = st.hands[p].length;
+  function renderPortrait() {
+    const st = window.state;
+    const cx = W / 2;
+    const topH    = H * 0.10;
+    const sideW   = W * 0.14;
+    const bottomH = H * 0.22;
+    const tableTop = topH;
+    const tableBot = H - bottomH;
+    const tableH  = tableBot - tableTop;
 
-    const r = lp.AVATAR_R * sc;
-    const avX = 12 * sc, avY = topY + zoneH / 2;
-    drawCircle(avX, avY, r, C.WIND_COLORS[p], isActive ? C.GOLD : null);
-    ctx.fillStyle = '#fff';
-    ctx.font = `bold ${Math.floor(r*0.7)}px "Microsoft YaHei",sans-serif`;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('北', avX, avY+1);
+    // 1. 桌面背景
+    drawPortraitTable(tableTop, tableH, sideW);
 
-    ctx.fillStyle = isActive ? C.GOLD : C.TEXT_DIM;
-    ctx.font = `${Math.floor(8*sc)}px "Microsoft YaHei",sans-serif`;
-    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-    ctx.fillText(`北AI ${st.scores[p]}`, avX+r+4*sc, avY);
+    // 2. 弃牌区（每人一行，靠近自己一侧）
+    drawPortraitDiscards(st, tableTop, tableH, sideW, cx);
 
-    const tw = lp.AI_TILE_W * sc, th = lp.AI_TILE_H * sc;
-    const tileY = avY - th/2;
-    const availW = W - avX - 80*sc;
-    // 重叠步进，确保所有牌都能显示
-    const step = Math.min(tw + 1, availW / count);
-    for (let i = 0; i < count; i++) {
-      drawTile(W - (count-i)*step, tileY, tw, th, 0, false, false, false);
-    }
+    // 3. 牌墙信息
+    drawPortraitWall(st, cx, tableBot - 14*sc);
+
+    // 4. 四家
+    drawPortraitTopAI(st, topH, cx);                                    // 北（对面）
+    drawPortraitSideAI(st, 2, 0, topH, sideW, tableH, false);          // 西（左）
+    drawPortraitSideAI(st, 3, W - sideW, topH, sideW, tableH, true);   // 东（右）
+    drawPortraitBottom(st, bottomH);                                    // 南（玩家）
+
+    // 5. 回合指示
+    drawPortraitTurnIndicator(st, topH, sideW, tableH, bottomH, cx);
   }
 
-  // ===== 左右AI（P2西 P3东） =====
-  function drawPortraitSideAI(playerIdx, x, topY, sideW, tableH, isRight) {
-    const st = window.state, lp = LAYOUT.PORTRAIT;
-    const isActive = st.currentPlayer === playerIdx;
-    const count = st.hands[playerIdx].length;
-
-    // 头像在上端
-    const r = lp.AVATAR_R * sc;
-    const avX = x + sideW/2;
-    const avY = topY + r + 4*sc;
-    drawCircle(avX, avY, r, C.WIND_COLORS[playerIdx], isActive ? C.GOLD : null);
-    ctx.fillStyle = '#fff';
-    ctx.font = `bold ${Math.floor(r*0.65)}px "Microsoft YaHei",sans-serif`;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(['西','东'][playerIdx-2], avX, avY+1);
-
-    // 名字+分数
-    ctx.fillStyle = isActive ? C.GOLD : C.TEXT_DIM;
-    ctx.font = `${Math.floor(8*sc)}px "Microsoft YaHei",sans-serif`;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    ctx.fillText(`${['西AI','东AI'][playerIdx-2]}  ${st.scores[playerIdx]}`, avX, avY + r + 2*sc);
-
-    // 牌背纵向（重叠显示，确保数量对应）
-    const tw = lp.AI_TILE_W * sc, th = lp.AI_TILE_H * sc;
-    const tileX = avX - tw/2;
-    const availV = (topY + tableH) - (avY + r + 18*sc);
-    // 重叠步进：让所有牌都能显示出来
-    const step = Math.min(th + 1, availV / count);
-    const startY = (topY + tableH) - step * count - 4*sc;
-    for (let i = 0; i < count; i++) {
-      drawTile(tileX, startY + i*step, tw, th, 0, false, false, false);
-    }
-  }
-
-  // ===== 中央桌面（仿APP布局：转盘+四角弃牌+牌墙） =====
+  // ===== 桌面 =====
   function drawPortraitTable(topY, tableH, sideW) {
-    const st = window.state, lp = LAYOUT.PORTRAIT;
     const cx = W/2, cy = topY + tableH/2;
-    const tw = W - sideW*2 - 2*sc, th = tableH*0.92;
-    const bw = 3*sc;
+    const tw = W - sideW*2 - 2*sc, th = tableH*0.96;
 
-    // 桌面
     ctx.save();
     ctx.shadowColor='rgba(0,0,0,0.35)'; ctx.shadowBlur=8; ctx.shadowOffsetY=2;
     drawRoundedRect(cx-tw/2, cy-th/2, tw, th, 8);
@@ -527,129 +479,190 @@ window.Renderer = (function() {
     g.addColorStop(0,C.TABLE_LIGHT); g.addColorStop(0.5,C.TABLE_PRIMARY); g.addColorStop(1,C.TABLE_EDGE);
     ctx.fillStyle=g; ctx.fill();
     ctx.restore();
-    ctx.strokeStyle='rgba(0,0,0,0.15)'; ctx.lineWidth=1.5; drawRoundedRect(cx-tw/2,cy-th/2,tw,th,8); ctx.stroke();
+    ctx.strokeStyle='rgba(0,0,0,0.15)'; ctx.lineWidth=1.5;
+    drawRoundedRect(cx-tw/2,cy-th/2,tw,th,8); ctx.stroke();
 
-    // ===== 中央转盘指示 =====
-    const compassR = 16*sc;
+    // 转盘
+    const compassR = 14*sc;
     drawCircle(cx, cy, compassR, C.TABLE_FRAME, 'rgba(212,165,69,0.4)');
-    // 风位
-    ctx.fillStyle = C.GOLD; ctx.font = `bold ${Math.floor(14*sc)}px "Microsoft YaHei",sans-serif`;
+    ctx.fillStyle = C.GOLD; ctx.font = `bold ${Math.floor(12*sc)}px "Microsoft YaHei",sans-serif`;
     ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText('南', cx, cy-2*sc);
-    ctx.fillStyle='rgba(255,255,255,0.2)'; ctx.font=`${Math.floor(8*sc)}px "Microsoft YaHei",sans-serif`;
-    ctx.fillText(st.dealerIdx===0?'庄':'', cx, cy+10*sc);
+    ctx.fillText('南', cx, cy);
+  }
 
-    // 四角方向标签
-    const dirs=[{l:'北',x:cx,y:cy-th/2+12*sc},{l:'南',x:cx,y:cy+th/2-12*sc},{l:'西',x:cx-tw/2+10*sc,y:cy},{l:'东',x:cx+tw/2-10*sc,y:cy}];
-    ctx.fillStyle='rgba(255,255,255,0.1)'; ctx.font=`${Math.floor(9*sc)}px "Microsoft YaHei",sans-serif`;
-    for(const d of dirs){ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(d.l,d.x,d.y);}
+  // ===== 弃牌区：每人一行放在自己面前 =====
+  function drawPortraitDiscards(st, tableTop, tableH, sideW, cx) {
+    const dtw = 18*sc, dth = 24*sc;  // 小牌
+    const gap = 1.5*sc;
+    const cellW = dtw + gap;
+    const maxShow = 12; // 每人最多显示12张
 
-    // ===== 四角弃牌区 =====
-    const dtw=lp.DISCARD_W*sc, dth=lp.DISCARD_H*sc;
-    const colMap=[3,3,3,3]; // 每个方向最多3列
-    const discPos=[
-      {cx:cx+tw*0.15, cy:cy-th*0.18}, // 南（底部玩家的弃牌，在桌面下方）
-      {cx:cx-tw*0.15, cy:cy-th*0.18}, // 北（对家弃牌，在桌面下方偏左）
-      {cx:cx-tw*0.15, cy:cy+th*0.18}, // 西
-      {cx:cx+tw*0.15, cy:cy+th*0.18}, // 东
-    ];
+    for (let p = 0; p < 4; p++) {
+      const disc = st.discards[p];
+      if (disc.length === 0) continue;
 
-    for(let p=0;p<4;p++){
-      const disc=st.discards[p];
-      if(disc.length===0) continue;
-      const {cx:dcx,cy:dcy}=discPos[p];
-      const cc=colMap[p];
-      const rows=Math.ceil(disc.length/cc);
-      const zw=cc*(dtw+2), zh=rows*(dth+2);
-      const sx=dcx-zw/2, sy=dcy-zh/2;
-      for(let i=0;i<disc.length&&i<9;i++){
-        const row=Math.floor(i/cc), col=i%cc;
-        drawTile(sx+col*(dtw+2), sy+row*(dth+2), dtw, dth, disc[i], true, false, false);
+      const show = Math.min(disc.length, maxShow);
+      const rowW = show * cellW;
+      let startX, startY, isHorizontal;
+
+      if (p === 0) {
+        // 南（玩家）：底部靠近玩家
+        startX = cx - rowW/2;
+        startY = tableTop + tableH - dth - 4*sc;
+        isHorizontal = true;
+      } else if (p === 1) {
+        // 北（对面）：顶部
+        startX = cx - rowW/2;
+        startY = tableTop + 4*sc;
+        isHorizontal = true;
+      } else if (p === 2) {
+        // 西（左侧）：左侧纵向
+        startX = sideW + 4*sc;
+        startY = tableTop + tableH/2 - (show * cellW)/2;
+        isHorizontal = false;
+      } else {
+        // 东（右侧）：右侧纵向
+        startX = W - sideW - dtw - 4*sc;
+        startY = tableTop + tableH/2 - (show * cellW)/2;
+        isHorizontal = false;
       }
-    }
 
-    // ===== 牌墙 =====
-    const rem=st.deck.length;
-    const barW=Math.min(70*sc,tw*0.3);
-    const barH2=7*sc;
-    const barX=cx-barW/2;
-    const barY=cy+th/2-16*sc;
-    ctx.fillStyle='rgba(0,0,0,0.3)'; drawRoundedRect(barX,barY,barW,barH2,barH2/2); ctx.fill();
-    const ratio=rem/112;
-    ctx.fillStyle=ratio>0.3?'#2E7D32':'#C43B2A';
-    drawRoundedRect(barX,barY,barW*ratio,barH2,barH2/2); ctx.fill();
-    ctx.fillStyle=C.TEXT_DIM; ctx.font=`${Math.floor(8*sc)}px "Microsoft YaHei",sans-serif`;
-    ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillText(`余${rem}`,cx,barY+barH2+2*sc);
-    if(rem<=10){
-      ctx.fillStyle=C.RED_BRIGHT; ctx.font=`bold ${Math.floor(9*sc)}px "Microsoft YaHei",sans-serif`;
-      ctx.fillText('⚠',cx-barW/2-8*sc,barY);
+      for (let i = 0; i < show; i++) {
+        const x = isHorizontal ? startX + i * cellW : startX;
+        const y = isHorizontal ? startY : startY + i * cellW;
+        drawTile(x, y, dtw, dth, disc[i], true, false, false);
+      }
     }
   }
 
-  // ===== 底部玩家（P0 南家） =====
-  function drawPortraitBottom(bottomH, tableBottomY) {
-    const st = window.state, hand = st.hands[0], cx = W/2, lp = LAYOUT.PORTRAIT;
+  // ===== 牌墙信息 =====
+  function drawPortraitWall(st, cx, y) {
+    const rem = st.deck.length;
+    const barW = Math.min(60*sc, W*0.15);
+    const barH = 5*sc;
+    const barX = cx - barW/2;
+    ctx.fillStyle='rgba(0,0,0,0.3)'; drawRoundedRect(barX,y,barW,barH,barH/2); ctx.fill();
+    const ratio = rem/112;
+    ctx.fillStyle = ratio>0.3 ? '#2E7D32' : '#C43B2A';
+    drawRoundedRect(barX,y,barW*ratio,barH,barH/2); ctx.fill();
+    ctx.fillStyle=C.TEXT_DIM; ctx.font=Math.floor(7*sc)+'px "Microsoft YaHei",sans-serif';
+    ctx.textAlign='center'; ctx.textBaseline='top';
+    ctx.fillText('余'+rem, cx, y+barH+1*sc);
+  }
+
+  // ===== 顶部AI（北家） =====
+  function drawPortraitTopAI(st, topH, cx) {
+    const p = 1, lp = LAYOUT.PORTRAIT;
+    const isActive = st.currentPlayer === p;
+    const count = st.hands[p].length;
+
+    // 头像居中
+    const r = lp.AVATAR_R * sc;
+    const avX = cx, avY = topH/2;
+    drawCircle(avX, avY, r, C.WIND_COLORS[p], isActive ? C.GOLD : null);
+    ctx.fillStyle='#fff'; ctx.font='bold '+Math.floor(r*0.7)+'px "Microsoft YaHei",sans-serif';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('北', avX, avY+1);
+
+    // 名字+分数
+    ctx.fillStyle = isActive ? C.GOLD : C.TEXT_DIM;
+    ctx.font = Math.floor(7*sc)+'px "Microsoft YaHei",sans-serif';
+    ctx.textAlign='left'; ctx.textBaseline='middle';
+    ctx.fillText('北AI '+st.scores[p], avX+r+3*sc, avY);
+
+    // 牌背：头像右侧一排
+    const tw = lp.AI_TILE_W*sc*0.8, th = lp.AI_TILE_H*sc*0.8;
+    const step = Math.min(tw+1, (W*0.5)/Math.max(count,1));
+    const startX = avX + r + 20*sc;
+    for (let i = 0; i < count; i++) {
+      drawTile(startX + i*step, avY-th/2, tw, th, 0, false, false, false);
+    }
+
+    // 副露
+    drawMeldsForPlayer(p, 6*sc, topH - lp.MELD_H*sc - 2*sc);
+  }
+
+  // ===== 左右AI（西/东家） =====
+  function drawPortraitSideAI(st, playerIdx, x, topY, sideW, tableH, isRight) {
+    const lp = LAYOUT.PORTRAIT;
+    const isActive = st.currentPlayer === playerIdx;
+    const count = st.hands[playerIdx].length;
+
+    // 头像
+    const r = lp.AVATAR_R * sc;
+    const avX = x + sideW/2;
+    const avY = topY + r + 4*sc;
+    drawCircle(avX, avY, r, C.WIND_COLORS[playerIdx], isActive ? C.GOLD : null);
+    ctx.fillStyle='#fff'; ctx.font='bold '+Math.floor(r*0.65)+'px "Microsoft YaHei",sans-serif';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(['西','东'][playerIdx-2], avX, avY+1);
+
+    ctx.fillStyle = isActive ? C.GOLD : C.TEXT_DIM;
+    ctx.font = Math.floor(7*sc)+'px "Microsoft YaHei",sans-serif';
+    ctx.textAlign='center'; ctx.textBaseline='top';
+    ctx.fillText(['西AI','东AI'][playerIdx-2]+' '+st.scores[playerIdx], avX, avY+r+1*sc);
+
+    // 牌背：紧贴头像下方
+    const tw = lp.AI_TILE_W*sc*0.7, th = lp.AI_TILE_H*sc*0.7;
+    const tileX = avX - tw/2;
+    const startY = avY + r + 10*sc;
+    const step = Math.min(th+1, 3*sc);
+    for (let i = 0; i < count; i++) {
+      drawTile(tileX, startY + i*step, tw, th, 0, false, false, false);
+    }
+
+    // 副露
+    drawMeldsForPlayer(playerIdx, isRight ? x+2*sc : x+sideW-lp.MELD_W*sc*3-6*sc, avY+r+10*sc+count*step+2*sc);
+  }
+
+  // ===== 底部玩家（南家） =====
+  function drawPortraitBottom(st, bottomH) {
+    const hand = st.hands[0], cx = W/2, lp = LAYOUT.PORTRAIT;
     st.hands[0]=sortHand(st.hands[0]); if(st.selectedIdx>=hand.length)st.selectedIdx=-1;
 
-    const areaTop=H-bottomH;
-    const padX=2*sc;
+    const areaTop = H - bottomH;
+    const padX = 2*sc;
 
-    // 手牌计算
+    // 玩家信息
+    const barH = 28*sc;
+    const r = 10*sc;
+    const avX = 12*sc, avY = areaTop + barH/2;
+    drawCircle(avX, avY, r, C.WIND_COLORS[0], st.currentPlayer===0 ? C.GOLD : null);
+    ctx.fillStyle='#fff'; ctx.font='bold '+Math.floor(r*0.7)+'px "Microsoft YaHei",sans-serif';
+    ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('你',avX,avY+1);
+    ctx.fillStyle=C.TEXT; ctx.font='bold '+Math.floor(10*sc)+'px "Microsoft YaHei",sans-serif';
+    ctx.textAlign='left'; ctx.textBaseline='middle';
+    ctx.fillText('你(南) '+st.scores[0]+'分', avX+r+4*sc, avY);
+
+    // 副露
+    drawMeldsForPlayer(0, avX+r+4*sc, avY + 10*sc);
+
+    // 手牌
     const mTw=lp.TILE_W*sc, mTh=lp.TILE_H*sc;
-    const availW=W-padX*2;
-    const minVW=24*sc;
-    const noOver=mTw*hand.length+(hand.length-1)*2;
+    const availW = W - padX*2;
+    const minVW = 22*sc;
+    const noOver = mTw*hand.length + (hand.length-1)*2;
     let tileW,tileH,pitch;
     if(noOver<=availW){tileW=mTw;tileH=mTh;pitch=(availW-tileW)/Math.max(hand.length-1,1);}
     else{const tp=(availW-mTw)/Math.max(hand.length-1,1);pitch=Math.max(tp,minVW);tileW=Math.min(mTw,pitch+mTw*lp.OVERLAP);tileH=tileW*(mTh/mTw);}
-    th2=tileH;
     const totalW=(hand.length-1)*pitch+tileW, hsx=padX+(availW-totalW)/2;
-    const handY = areaTop + 4*sc + mTh*0.5;
+    const handY = areaTop + barH + 4*sc;
 
-    // 玩家信息行（底部分数栏风格）
-    const barH=36*sc;
-    const r=10*sc;
-    const avX=12*sc, avY=areaTop+barH/2;
-    drawCircle(avX,avY,r,C.WIND_COLORS[0],st.currentPlayer===0?C.GOLD:null);
-    ctx.fillStyle='#fff'; ctx.font=`bold ${Math.floor(r*0.7)}px "Microsoft YaHei",sans-serif`;
-    ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('你',avX,avY+1);
-
-    // 名字+分数（参照APP风格：名字大字+分数小字）
-    ctx.fillStyle=C.TEXT; ctx.font=`bold ${Math.floor(11*sc)}px "Microsoft YaHei",sans-serif`;
-    ctx.textAlign='left'; ctx.textBaseline='middle';
-    ctx.fillText('你(南)', avX+r+5*sc, avY-6*sc);
-
-    ctx.fillStyle=C.TEXT_DIM; ctx.font=`${Math.floor(9*sc)}px "Microsoft YaHei",sans-serif`;
-    ctx.textAlign='left'; ctx.textBaseline='middle';
-    ctx.fillText(`${st.scores[0]}分`, avX+r+5*sc, avY+7*sc);
-
-    // 副露（在玩家信息和手牌之间，右上区域）
-    const melds=st.melds[0];
-    let meldX=W-10*sc;
-    const mw=lp.MELD_W*sc, mh=lp.MELD_H*sc;
-    for(const meld of melds){
-      const tc=meld.type==='gang'?4:3;
-      meldX-=tc*(mw+1)+3*sc;
-      for(let i=0;i<tc;i++){
-        drawTile(meldX+i*(mw+1), areaTop+4*sc, mw, mh, meld.tiles[i], true, false, false);
-      }
-    }
-
-    // 手牌（单循环绘制+记录位置）
     st._playerTilePositions=[]; const newTileIdx=hand.length-1;
     for(let i=0;i<hand.length;i++){
       const x=hsx+i*pitch;
       const isNew=(st.turnPhase==='draw'||st.turnPhase==='discard')&&i===newTileIdx;
       const sel=st.selectedIdx===i;
-      const yOff=sel?14*sc:(isNew?8*sc:0);
+      const yOff=sel?12*sc:(isNew?6*sc:0);
       drawTile(x, handY-yOff, tileW, tileH, hand[i], true, sel, isNew&&!sel);
       st._playerTilePositions.push({x,y:handY-yOff,w:tileW,h:tileH,idx:i});
     }
 
     // 提示
     if(st.turnPhase==='discard'&&st.phase==='playerTurn'){
-      ctx.fillStyle='rgba(255,215,0,0.4)'; ctx.font=`${Math.floor(9*sc)}px "Microsoft YaHei",sans-serif`;
-      ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillText('点牌→选中→再点打出',cx,handY+tileH+2*sc);
+      ctx.fillStyle='rgba(255,215,0,0.4)'; ctx.font=Math.floor(8*sc)+'px "Microsoft YaHei",sans-serif';
+      ctx.textAlign='center'; ctx.textBaseline='top';
+      ctx.fillText('点牌→选中→再点打出', cx, handY+tileH+1*sc);
     }
   }
 

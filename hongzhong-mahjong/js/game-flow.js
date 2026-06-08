@@ -360,9 +360,12 @@ window.GameFlow = (function() {
 
   let _aiSafetyTimer = null;
 
+  // 逆时针出牌顺序：南(0)→东(3)→北(1)→西(2)→南(0)
+  const TURN_ORDER = [3, 1, 2, 0]; // TURN_ORDER[0]=3 表示南之后是东
+
   function nextTurn(fromPlayer) {
     const st = s();
-    let next = (fromPlayer + 1) % 4;
+    let next = TURN_ORDER[fromPlayer];
     st.currentPlayer = next;
     st.lastDiscard = -1;
     st._aiStartTime = null; // 清除健康检查时间戳
