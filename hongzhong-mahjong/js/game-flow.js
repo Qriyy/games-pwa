@@ -388,8 +388,8 @@ window.GameFlow = (function() {
     return t;
   }
 
-  // 逆时针出牌顺序：南(0)→东(3)→北(1)→西(2)→南(0)
-  const TURN_ORDER = [3, 1, 2, 0]; // TURN_ORDER[0]=3 表示南之后是东
+  // 顺时针出牌顺序：南(0)→西(2)→北(1)→东(3)→南(0)
+  const TURN_ORDER = [2, 3, 1, 0]; // TURN_ORDER[0]=2 表示南之后是西
 
   function nextTurn(fromPlayer) {
     const st = s();
