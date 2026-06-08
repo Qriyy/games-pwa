@@ -1,12 +1,9 @@
 /**
- * 红中麻将 — 游戏流程模块（简洁版）
- *
- * 核心原则：
- *   1. 只有一个"当前动作"在执行，不存在并行
- *   2. 每个动作开始时检查状态是否仍然有效
- *   3. clearAllPending() 在每次状态切换时调用
+ * 红中麻将 — 游戏流程模块
+ * startNewGame / drawTileFromDeck / playerDiscard / aiTurn / aiWin
+ * checkResponses / nextTurn / playerPass / endGame
  */
-window.GameFlow = (function () {
+window.GameFlow = (function() {
   const { HONGZHONG_ID } = window.Constants;
   const { isHongzhong, tileBaseId, tileName, sortHand, buildDeck, shuffle } = window.Tiles;
   const { canHu, canPeng, canGang, canSelfGang } = window.HuDetection;
@@ -17,36 +14,8 @@ window.GameFlow = (function () {
 
   function s() { return window.state; }
 
-  // ====== 唯一的异步控制系统 ======
-  let _pendingTimers = [];
-  let _actionId = 0; // 单调递增，每次新动作+1
-
-  /** 清除所有待执行的异步动作 */
-  function cancelAll() {
-    _actionId++;
-    _pendingTimers.forEach(t => clearTimeout(t));
-    _pendingTimers = [];
-  }
-
-  /** 安排一个延迟动作，自动绑定当前 actionId */
-  function schedule(fn, delay) {
-    const id = _actionId;
-    const t = setTimeout(() => {
-      // 如果 actionId 变了，说明中间有新动作，跳过
-      if (id !== _actionId) return;
-      fn();
-    }, delay);
-    _pendingTimers.push(t);
-  }
-
-  // ====== 出牌顺序：逆时针 南→东→北→西 ======
-  const NEXT = [3, 1, 2, 0];
-
-  // ================================================================
-  //  startNewGame
-  // ================================================================
   function startNewGame() {
-    cancelAll();
+    _clearAllTimers();
     const st = s();
     st.deck = shuffle(buildDeck());
     st.hands = [[], [], [], []];
@@ -68,7 +37,7 @@ window.GameFlow = (function () {
     st.qiangGangTile = -1;
     st.qiangGangPlayer = -1;
 
-    for (let r = 0; r < 13; r++) {
+    for (let round = 0; round < 13; round++) {
       for (let p = 0; p < 4; p++) {
         st.hands[p].push(st.deck.pop());
       }
@@ -91,27 +60,34 @@ window.GameFlow = (function () {
     }
 
     window.UI.updateButtons();
-    try { render(); } catch (e) { console.error('render:', e); }
+    try { render(); } catch(e) { console.error('startNewGame渲染异常:', e); }
 
     if (st.dealerIdx !== 0) {
-      schedule(() => aiTurn(st.dealerIdx), 800);
+      setTimeout(() => aiTurn(st.dealerIdx), 800);
     }
   }
 
-  // ================================================================
-  //  drawTileFromDeck — 玩家摸牌（同步）
-  // ================================================================
   function drawTileFromDeck(playerIdx) {
     const st = s();
-    if (st.deck.length === 0) { endGame(-1, 'draw'); return null; }
+    if (st.deck.length === 0) {
+      endGame(-1, 'draw');
+      return;
+    }
     const tile = st.deck.pop();
     if (st.deck.length === 0) st.isLastTile = true;
+
     st.hands[playerIdx].push(tile);
 
     if (playerIdx === 0) {
       st.hands[0] = sortHand(st.hands[0]);
-      if (canHu(st.hands[0], st.melds[0]).canHu) st.canHu = true;
-      st.canGang = canSelfGang(st.hands[0], st.melds[0]).length > 0;
+    }
+
+    if (playerIdx === 0) {
+      const selfGangs = canSelfGang(st.hands[0], st.melds[0]);
+      if (canHu(st.hands[0], st.melds[0]).canHu) {
+        st.canHu = true;
+      }
+      st.canGang = selfGangs.length > 0;
       st.canPeng = false;
       st.selectedIdx = -1;
       st.phase = 'playerTurn';
@@ -121,103 +97,126 @@ window.GameFlow = (function () {
     } else {
       window.UI.playSound('draw');
     }
-    try { render(); } catch (e) { console.error('render:', e); }
+
+    try { render(); } catch(e) { console.error('drawTile渲染异常:', e); }
     return tile;
   }
 
-  // ================================================================
-  //  playerDiscard — 玩家出牌
-  // ================================================================
   function playerDiscard(idx) {
     const st = s();
     if (st.phase !== 'playerTurn' || st.turnPhase !== 'discard') return;
     if (idx < 0 || idx >= st.hands[0].length) return;
-    const tile = st.hands[0][idx];
-    if (isHongzhong(tile)) { window.UI.setStatus('红中不能打出！'); return; }
 
+    const tile = st.hands[0][idx];
+    if (isHongzhong(tile)) {
+      window.UI.setStatus('红中不能打出！');
+      return;
+    }
     st.hands[0].splice(idx, 1);
     st.hands[0] = sortHand(st.hands[0]);
     st.discards[0].push(tile);
     st.lastDiscard = tile;
     st.lastDiscardPlayer = 0;
     st.selectedIdx = -1;
-    st.canHu = false; st.canGang = false; st.canPeng = false;
+    st.canHu = false;
+    st.canGang = false;
+    st.canPeng = false;
     window.UI.playSound('discard');
-    try { render(); } catch (e) { console.error('render:', e); }
 
-    try { checkResponses(0, tile); } catch (e) {
-      console.error('checkResponses:', e);
+    try {
+      checkResponses(0, tile);
+    } catch(err) {
+      console.error('玩家出牌后checkResponses异常:', err);
       nextTurn(0);
     }
   }
 
-  // ================================================================
-  //  aiTurn — AI 回合（摸牌 + 出牌）
-  // ================================================================
   function aiTurn(playerIdx) {
     const st = s();
     st.phase = 'aiTurn';
     st.currentPlayer = playerIdx;
-    try { render(); } catch (e) {}
+    st._aiStartTime = Date.now(); // 健康检查用
+    try { render(); } catch(e) { console.error('AI渲染异常:', e); }
 
-    schedule(() => {
+    // 安全定时器：3秒后如果还卡在aiTurn就强制推进
+    if (_aiSafetyTimer) clearTimeout(_aiSafetyTimer);
+    _aiSafetyTimer = setTimeout(() => {
       const cur = s();
-      // 守卫：必须仍是该 AI 的回合
-      if (cur.phase !== 'aiTurn' || cur.currentPlayer !== playerIdx) return;
-      if (cur.phase === 'gameOver') return;
+      if (cur.phase === 'aiTurn' && cur.currentPlayer === playerIdx) {
+        console.warn('AI超时，强制推进');
+        _aiSafetyTimer = null;
+        nextTurn(playerIdx);
+      }
+    }, 3000);
 
+    setTimeout(() => {
+      // 清除安全定时器（AI已经开始执行了）
+      if (_aiSafetyTimer) { clearTimeout(_aiSafetyTimer); _aiSafetyTimer = null; }
+      // 检查是否还是这个AI的回合（防止安全定时器已跳过）
+      const cur = s();
+      if (cur.phase !== 'aiTurn' || cur.currentPlayer !== playerIdx) return;
       try {
-        // 摸牌
-        if (cur.deck.length === 0) { endGame(-1, 'draw'); return; }
-        const tile = cur.deck.pop();
-        if (cur.deck.length === 0) cur.isLastTile = true;
-        cur.hands[playerIdx].push(tile);
+        if (st.deck.length === 0) {
+          endGame(-1, 'draw');
+          return;
+        }
+        const tile = st.deck.pop();
+        if (st.deck.length === 0) st.isLastTile = true;
+
+        st.hands[playerIdx].push(tile);
         window.UI.playSound('draw');
 
-        // 自摸检查
-        if (canHu(cur.hands[playerIdx], cur.melds[playerIdx]).canHu) {
-          if (shouldHu(cur.hands[playerIdx], -1, cur.difficulty)) {
+        // 检查自摸
+        if (canHu(st.hands[playerIdx], st.melds[playerIdx]).canHu) {
+          if (shouldHu(st.hands[playerIdx], -1, st.difficulty)) {
             aiWin(playerIdx, tile, 'zimo');
             return;
           }
         }
 
-        // 自杠检查
-        const selfGangs = canSelfGang(cur.hands[playerIdx], cur.melds[playerIdx]);
+        // 检查自杠
+        const selfGangs = canSelfGang(st.hands[playerIdx], st.melds[playerIdx]);
         if (selfGangs.length > 0) {
-          performGang(playerIdx, -1, selfGangs[0]);
-          cur.isAfterGang = true;
-          schedule(() => aiTurn(playerIdx), 600);
+          const gangBase = selfGangs[0];
+          performGang(playerIdx, -1, gangBase);
+          st.isAfterGang = true;
+          setTimeout(() => aiTurn(playerIdx), 600);
           return;
         }
-        cur.isAfterGang = false;
-        cur.isLastTile = false;
 
-        // 出牌
+        st.isAfterGang = false;
+        st.isLastTile = false;
+
         let discardIdx;
-        try { discardIdx = getAIDecision(cur.hands[playerIdx], cur.difficulty); }
-        catch (e) { discardIdx = -1; }
-
-        if (discardIdx < 0 || discardIdx >= cur.hands[playerIdx].length) {
-          for (let i = 0; i < cur.hands[playerIdx].length; i++) {
-            if (!isHongzhong(cur.hands[playerIdx][i])) {
-              const d = cur.hands[playerIdx].splice(i, 1)[0];
-              cur.discards[playerIdx].push(d);
-              cur.lastDiscard = d; cur.lastDiscardPlayer = playerIdx;
+        try {
+          discardIdx = getAIDecision(st.hands[playerIdx], st.difficulty);
+        } catch(e) {
+          discardIdx = -1;
+        }
+        if (discardIdx < 0 || discardIdx >= st.hands[playerIdx].length) {
+          // fallback: 打第一张非红中
+          for (let i = 0; i < st.hands[playerIdx].length; i++) {
+            if (!isHongzhong(st.hands[playerIdx][i])) {
+              const discarded = st.hands[playerIdx].splice(i, 1)[0];
+              st.discards[playerIdx].push(discarded);
+              st.lastDiscard = discarded;
+              st.lastDiscardPlayer = playerIdx;
               break;
             }
           }
         } else {
-          const d = cur.hands[playerIdx].splice(discardIdx, 1)[0];
-          cur.discards[playerIdx].push(d);
-          cur.lastDiscard = d; cur.lastDiscardPlayer = playerIdx;
+          const discarded = st.hands[playerIdx].splice(discardIdx, 1)[0];
+          st.discards[playerIdx].push(discarded);
+          st.lastDiscard = discarded;
+          st.lastDiscardPlayer = playerIdx;
         }
-
         window.UI.playSound('discard');
-        try { render(); } catch (e) {}
-        checkResponses(playerIdx, cur.lastDiscard);
-      } catch (err) {
-        console.error('AI回合异常:', err);
+        render();
+
+        checkResponses(playerIdx, st.lastDiscard);
+      } catch(err) {
+        // 任何异常都强制推进到下一回合，防止游戏卡死
+        console.error('AI回合异常:', err.message, err.stack);
         nextTurn(playerIdx);
       }
     }, 500 + Math.random() * 400);
@@ -225,100 +224,139 @@ window.GameFlow = (function () {
 
   function aiWin(playerIdx, tile, type) {
     const st = s();
-    st.winner = playerIdx; st.winType = type; st.huTile = tile;
+    st.winner = playerIdx;
+    st.winType = type;
+    st.huTile = tile;
     st.phase = 'gameOver';
-    cancelAll();
     window.UI.playSound('hu');
     endGame(playerIdx, type);
   }
 
-  // ================================================================
-  //  checkResponses — 检查所有人对弃牌的响应
-  // ================================================================
   function checkResponses(discardPlayer, tile) {
     const st = s();
-    cancelAll(); // 清除旧动作
+    _clearAllTimers(); // 清除所有旧的AI响应定时器
 
-    const huPlayers = [], gangPlayers = [], pengPlayers = [];
+    let huPlayers = [];
+    let gangPlayers = [];
+    let pengPlayers = [];
+
     for (let p = 0; p < 4; p++) {
       if (p === discardPlayer) continue;
       const testHand = [...st.hands[p], tile];
-      if (canHu(testHand, st.melds[p]).canHu) huPlayers.push(p);
-      else if (canGang(st.hands[p], tile, st.melds[p])) gangPlayers.push(p);
-      else if (canPeng(st.hands[p], tile)) pengPlayers.push(p);
+
+      if (canHu(testHand, st.melds[p]).canHu) {
+        huPlayers.push(p);
+      } else if (canGang(st.hands[p], tile, st.melds[p])) {
+        gangPlayers.push(p);
+      } else if (canPeng(st.hands[p], tile)) {
+        pengPlayers.push(p);
+      }
     }
 
-    // ---- 胡 ----
+    // 胡优先
     if (huPlayers.length > 0) {
       if (huPlayers.includes(0)) {
-        st.canHu = true; st.canPeng = false; st.canGang = false;
+        st.canHu = true;
+        st.canPeng = false;
+        st.canGang = false;
         st.pendingActions = ['hu', 'pass'];
-        st.phase = 'playerTurn'; st.turnPhase = 'response';
-        window.UI.updateButtons(); render();
+        st.phase = 'playerTurn';
+        st.turnPhase = 'response';
+        window.UI.updateButtons();
+        render();
+        // AI胡
+        for (const p of huPlayers) {
+          if (p !== 0) {
+            _setTimer(() => {
+              performHu(p, tile, discardPlayer);
+              endGame(p, 'dianpao', discardPlayer);
+            }, 300);
+            return;
+          }
+        }
         return;
       }
       const aiHu = huPlayers.find(p => p !== 0);
       if (aiHu !== undefined) {
-        schedule(() => { performHu(aiHu, tile, discardPlayer); endGame(aiHu, 'dianpao', discardPlayer); }, 500);
-        return;
-      }
-    }
-
-    // ---- 杠 ----
-    if (gangPlayers.length > 0) {
-      if (gangPlayers.includes(0)) {
-        st.canGang = true; st.canPeng = false; st.canHu = false;
-        st.pendingActions = ['gang', 'pass'];
-        st.phase = 'playerTurn'; st.turnPhase = 'response';
-        window.UI.updateButtons(); render();
-        return;
-      }
-      const aiGang = gangPlayers.find(p => p !== 0);
-      if (aiGang !== undefined) {
-        schedule(() => {
-          performGang(aiGang, tile, tileBaseId(tile));
-          const qg = checkQiangGangHu(aiGang, tile, 'ming_gang');
-          if (qg && typeof qg === 'object') {
-            if (qg.player !== 0) {
-              schedule(() => { performQiangGangHu(qg.player, qg.tile, qg.gangPlayer); endGame(qg.player, 'qiangganghu', qg.gangPlayer); }, 300);
-            }
-            return;
-          }
-          schedule(() => aiTurn(aiGang), 600);
+        _setTimer(() => {
+          performHu(aiHu, tile, discardPlayer);
+          endGame(aiHu, 'dianpao', discardPlayer);
         }, 500);
         return;
       }
     }
 
-    // ---- 碰 ----
+    // 杠
+    if (gangPlayers.length > 0) {
+      if (gangPlayers.includes(0)) {
+        st.canGang = true;
+        st.canPeng = false;
+        st.canHu = false;
+        st.pendingActions = ['gang', 'pass'];
+        st.phase = 'playerTurn';
+        st.turnPhase = 'response';
+        window.UI.updateButtons();
+        render();
+        return;
+      }
+      const aiGang = gangPlayers.find(p => p !== 0);
+      if (aiGang !== undefined) {
+        _setTimer(() => {
+          const result = performGang(aiGang, tile, tileBaseId(tile));
+          // 抢杠胡检查
+          const qg = result ? checkQiangGangHu(aiGang, result.gangTile, result.gangType) : null;
+          if (qg && typeof qg === 'object') {
+            if (qg.player !== 0) {
+              _setTimer(() => {
+                performQiangGangHu(qg.player, qg.tile, qg.gangPlayer);
+                endGame(qg.player, 'qiangganghu', qg.gangPlayer);
+              }, 300);
+            }
+            // player 0: UI 已由 checkQiangGangHu 设置
+            return;
+          }
+          _setTimer(() => aiTurn(aiGang), 600);
+        }, 500);
+        return;
+      }
+    }
+
+    // 碰
     if (pengPlayers.length > 0) {
       if (pengPlayers.includes(0)) {
-        st.canPeng = true; st.canGang = false; st.canHu = false;
+        st.canPeng = true;
+        st.canGang = false;
+        st.canHu = false;
         st.pendingActions = ['peng', 'pass'];
-        st.phase = 'playerTurn'; st.turnPhase = 'response';
-        window.UI.updateButtons(); render();
+        st.phase = 'playerTurn';
+        st.turnPhase = 'response';
+        window.UI.updateButtons();
+        render();
         return;
       }
       const aiPeng = pengPlayers.find(p => p !== 0);
       if (aiPeng !== undefined) {
-        schedule(() => {
+        _setTimer(() => {
           performPeng(aiPeng, tile, discardPlayer);
-          schedule(() => {
-            const cur = s();
-            let discardIdx;
-            try { discardIdx = getAIDecision(cur.hands[aiPeng], cur.difficulty); }
-            catch (e) { discardIdx = -1; }
+          _setTimer(() => {
+            const discardIdx = getAIDecision(st.hands[aiPeng], st.difficulty);
             let discarded;
-            if (discardIdx < 0 || discardIdx >= cur.hands[aiPeng].length) {
-              for (let i = 0; i < cur.hands[aiPeng].length; i++) {
-                if (!isHongzhong(cur.hands[aiPeng][i])) { discarded = cur.hands[aiPeng].splice(i, 1)[0]; break; }
+            if (discardIdx < 0 || discardIdx >= st.hands[aiPeng].length) {
+              for (let i = 0; i < st.hands[aiPeng].length; i++) {
+                if (!isHongzhong(st.hands[aiPeng][i])) {
+                  discarded = st.hands[aiPeng].splice(i, 1)[0];
+                  break;
+                }
               }
-            } else { discarded = cur.hands[aiPeng].splice(discardIdx, 1)[0]; }
+            } else {
+              discarded = st.hands[aiPeng].splice(discardIdx, 1)[0];
+            }
             if (discarded) {
-              cur.discards[aiPeng].push(discarded);
-              cur.lastDiscard = discarded; cur.lastDiscardPlayer = aiPeng;
+              st.discards[aiPeng].push(discarded);
+              st.lastDiscard = discarded;
+              st.lastDiscardPlayer = aiPeng;
               window.UI.playSound('discard');
-              try { render(); } catch (e) {}
+              render();
               checkResponses(aiPeng, discarded);
             }
           }, 500);
@@ -327,19 +365,41 @@ window.GameFlow = (function () {
       }
     }
 
-    // ---- 无人响应 → 下一回合 ----
     nextTurn(discardPlayer);
   }
 
-  // ================================================================
-  //  nextTurn — 切到下一个玩家
-  // ================================================================
+  let _aiSafetyTimer = null;
+  let _pendingResponseTimers = []; // 追踪所有AI响应超时
+
+  function _clearAllTimers() {
+    if (_aiSafetyTimer) { clearTimeout(_aiSafetyTimer); _aiSafetyTimer = null; }
+    _pendingResponseTimers.forEach(t => clearTimeout(t));
+    _pendingResponseTimers = [];
+  }
+
+  function _setTimer(fn, delay) {
+    const t = setTimeout(() => {
+      // 从列表中移除自己
+      const idx = _pendingResponseTimers.indexOf(t);
+      if (idx !== -1) _pendingResponseTimers.splice(idx, 1);
+      fn();
+    }, delay);
+    _pendingResponseTimers.push(t);
+    return t;
+  }
+
+  // 逆时针出牌顺序：南(0)→东(3)→北(1)→西(2)→南(0)
+  const TURN_ORDER = [3, 1, 2, 0]; // TURN_ORDER[0]=3 表示南之后是东
+
   function nextTurn(fromPlayer) {
     const st = s();
-    const next = NEXT[fromPlayer];
+    let next = TURN_ORDER[fromPlayer];
     st.currentPlayer = next;
     st.lastDiscard = -1;
-    cancelAll();
+    st._aiStartTime = null; // 清除健康检查时间戳
+
+    // 清除所有旧定时器
+    _clearAllTimers();
 
     try {
       if (next === 0) {
@@ -349,64 +409,71 @@ window.GameFlow = (function () {
       } else {
         aiTurn(next);
       }
-    } catch (err) {
+    } catch(err) {
       console.error('nextTurn异常:', err);
-      // 强制推进到下一个玩家，不要卡死
-      const skipNext = NEXT[next];
+      // 跳过当前玩家，尝试下一个
+      const skipNext = TURN_ORDER[next];
       st.currentPlayer = skipNext;
       if (skipNext === 0) {
         st.phase = 'playerTurn'; st.turnPhase = 'discard';
         st.selectedIdx = -1;
         window.UI.updateButtons(); render();
       } else {
-        aiTurn(skipNext);
+        try { aiTurn(skipNext); } catch(e) { console.error('skip也失败:', e); }
       }
+      render();
     }
   }
 
-  // ================================================================
-  //  playerPass — 玩家"过"
-  // ================================================================
   function playerPass() {
     const st = s();
-    cancelAll();
-    st.canHu = false; st.canGang = false; st.canPeng = false;
-    st.selectedIdx = -1; st.pendingActions = [];
+    _clearAllTimers(); // 清除所有旧定时器
+    st.canHu = false;
+    st.canGang = false;
+    st.canPeng = false;
+    st.selectedIdx = -1;
+    st.pendingActions = [];
     window.UI.updateButtons();
 
-    // 检查其他 AI 能否响应
+    // 玩家过了，检查其他AI能不能碰/杠/胡这张牌
     const tile = st.lastDiscard;
-    const dp = st.lastDiscardPlayer;
-    if (tile > 0 && dp >= 0) {
+    const discardPlayer = st.lastDiscardPlayer;
+    if (tile > 0 && discardPlayer >= 0) {
+      // 胡优先
       for (let p = 1; p < 4; p++) {
-        if (p === dp) continue;
-        if (canHu([...st.hands[p], tile], st.melds[p]).canHu && shouldHu(st.hands[p], tile, st.difficulty)) {
-          schedule(() => { performHu(p, tile, dp); endGame(p, 'dianpao', dp); }, 400);
-          return;
+        if (p === discardPlayer) continue;
+        if (canHu([...st.hands[p], tile], st.melds[p]).canHu) {
+          if (shouldHu(st.hands[p], tile, st.difficulty)) {
+            _setTimer(() => {
+              performHu(p, tile, discardPlayer);
+              endGame(p, 'dianpao', discardPlayer);
+            }, 400);
+            return;
+          }
         }
       }
+      // 碰
       for (let p = 1; p < 4; p++) {
-        if (p === dp) continue;
+        if (p === discardPlayer) continue;
         if (canPeng(st.hands[p], tile) && shouldPeng(st.hands[p], tile, st.difficulty)) {
-          st.phase = 'aiTurn'; st.currentPlayer = p;
-          schedule(() => {
-            performPeng(p, tile, dp);
-            schedule(() => {
-              const cur = s();
-              let discardIdx;
-              try { discardIdx = getAIDecision(cur.hands[p], cur.difficulty); }
-              catch (e) { discardIdx = -1; }
+          st.phase = 'aiTurn';
+          st.currentPlayer = p;
+          _setTimer(() => {
+            performPeng(p, tile, discardPlayer);
+            _setTimer(() => {
+              const discardIdx = getAIDecision(st.hands[p], st.difficulty);
               let discarded;
-              if (discardIdx < 0 || discardIdx >= cur.hands[p].length) {
-                for (let i = 0; i < cur.hands[p].length; i++) {
-                  if (!isHongzhong(cur.hands[p][i])) { discarded = cur.hands[p].splice(i, 1)[0]; break; }
+              if (discardIdx < 0 || discardIdx >= st.hands[p].length) {
+                for (let i = 0; i < st.hands[p].length; i++) {
+                  if (!isHongzhong(st.hands[p][i])) { discarded = st.hands[p].splice(i, 1)[0]; break; }
                 }
-              } else { discarded = cur.hands[p].splice(discardIdx, 1)[0]; }
+              } else { discarded = st.hands[p].splice(discardIdx, 1)[0]; }
               if (discarded) {
-                cur.discards[p].push(discarded);
-                cur.lastDiscard = discarded; cur.lastDiscardPlayer = p;
+                st.discards[p].push(discarded);
+                st.lastDiscard = discarded;
+                st.lastDiscardPlayer = p;
                 window.UI.playSound('discard');
-                try { render(); } catch (e) {}
+                render();
                 checkResponses(p, discarded);
               }
             }, 500);
@@ -415,16 +482,14 @@ window.GameFlow = (function () {
         }
       }
     }
-    nextTurn(dp);
+
+    // 没有AI要响应，正常下一回合
+    nextTurn(discardPlayer);
   }
 
-  // ================================================================
-  //  endGame
-  // ================================================================
   function endGame(winner, type, dianpaoPlayer) {
     const st = s();
     st.phase = 'gameOver';
-    cancelAll();
 
     const modal = document.getElementById('result-modal');
     const title = document.getElementById('result-title');
@@ -438,9 +503,14 @@ window.GameFlow = (function () {
     } else {
       const isPlayerWin = (winner === 0);
       const { fan, typeName, points } = calcScore(st.hands[winner], st.melds[winner], type);
-      title.textContent = isPlayerWin ? '🎉 你赢了！' : (window.UI.aiDirectionName(winner) + ' 胡了');
-      let detailText = typeName + '（' + fan + '番）\n胡牌: ' + tileName(st.huTile);
-      detailText += '\n牌面: ' + sortHand(st.hands[winner]).map(t => tileName(t)).join(' ');
+
+      title.textContent = isPlayerWin ? '🎉 你赢了！' : `${window.UI.aiDirectionName(winner)} 胡了`;
+
+      let detailText = `${typeName}（${fan}番）`;
+      detailText += `\n胡牌: ${tileName(st.huTile)}`;
+
+      const winHand = sortHand(st.hands[winner]);
+      detailText += '\n牌面: ' + winHand.map(t => tileName(t)).join(' ');
       detail.textContent = detailText;
 
       if (isPlayerWin) {
@@ -448,11 +518,15 @@ window.GameFlow = (function () {
           const total = points * 3;
           st.scores[0] += total;
           for (let p = 1; p < 4; p++) st.scores[p] -= points;
-          score.textContent = '底分10 × ' + fan + '番 = ' + points + '分/家\n自摸三家付: +' + total + '分';
+          let scoreText = `底分10 × ${fan}番 = ${points}分/家\n自摸三家付: +${total}分`;
+          if (st.gangLog.length > 0) scoreText += `\n杠分已计入总分`;
+          score.textContent = scoreText;
         } else {
           st.scores[0] += points;
           st.scores[dianpaoPlayer] -= points;
-          score.textContent = '底分10 × ' + fan + '番 = ' + points + '分\n点炮者付: +' + points + '分';
+          let scoreText = `底分10 × ${fan}番 = ${points}分\n点炮者付: +${points}分`;
+          if (st.gangLog.length > 0) scoreText += `\n杠分已计入总分`;
+          score.textContent = scoreText;
         }
       } else {
         if (type === 'zimo') {
@@ -460,28 +534,35 @@ window.GameFlow = (function () {
             if (p === winner) st.scores[p] += points * 3;
             else st.scores[p] -= points;
           }
-          score.textContent = typeName + '（' + fan + '番）\n你付 ' + points + '分 (三家各付)';
+          let scoreText = `${typeName}（${fan}番）\n你付 ${points}分 (三家各付)`;
+          if (st.gangLog.length > 0) scoreText += `\n杠分已计入总分`;
+          score.textContent = scoreText;
         } else {
           if (dianpaoPlayer === 0) {
-            st.scores[0] -= points; st.scores[winner] += points;
-            score.textContent = typeName + '（' + fan + '番）\n你点炮: -' + points + '分';
+            st.scores[0] -= points;
+            st.scores[winner] += points;
+            let scoreText = `${typeName}（${fan}番）\n你点炮: -${points}分`;
+            if (st.gangLog.length > 0) scoreText += `\n杠分已计入总分`;
+            score.textContent = scoreText;
           } else {
-            st.scores[dianpaoPlayer] -= points; st.scores[winner] += points;
-            score.textContent = typeName + '（' + fan + '番）\n' + window.UI.aiDirectionName(dianpaoPlayer) + '点炮';
+            st.scores[dianpaoPlayer] -= points;
+            st.scores[winner] += points;
+            let scoreText = `${typeName}（${fan}番）\n${window.UI.aiDirectionName(dianpaoPlayer)} 点炮`;
+            if (st.gangLog.length > 0) scoreText += `\n杠分已计入总分`;
+            score.textContent = scoreText;
           }
         }
       }
+
+      window.UI.updateScoreBar();
     }
 
     modal.classList.add('show');
-    window.UI.updateScoreBar();
+    render();
   }
 
-  // ================================================================
-  //  导出
-  // ================================================================
   return {
     startNewGame, drawTileFromDeck, playerDiscard,
-    aiTurn, checkResponses, nextTurn, playerPass, endGame,
+    aiTurn, aiWin, checkResponses, nextTurn, playerPass, endGame,
   };
 })();
