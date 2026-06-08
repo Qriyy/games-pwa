@@ -164,7 +164,7 @@ window.Renderer = (function() {
     // 布局区域（百分比）
     var topH = H * 0.09;          // 顶部AI区
     var sideW = W * 0.14;         // 左右侧AI区
-    var bottomH = H * 0.23;       // 底部玩家区
+    var bottomH = H * 0.27;       // 底部玩家区（加大，给按钮留空间）
     var tableTop = topH;
     var tableBot = H - bottomH;
     var tableH = tableBot - tableTop;
@@ -208,21 +208,37 @@ window.Renderer = (function() {
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('南', cx, cy);
   }
 
-  // ===== 弃牌区：每人一行 =====
+  // ===== 弃牌区：每人面前一小块 =====
   function _discards(st, top, th, sw, cx) {
-    var dw = Math.max(12, 18 * sc), dh = Math.max(16, 24 * sc), gap = Math.max(1, 1.5 * sc);
-    var cw = dw + gap, maxShow = 14;
+    var dw = Math.max(10, 14 * sc), dh = Math.max(14, 20 * sc), gap = Math.max(1, 1.5 * sc);
+    var cw = dw + gap, ch = dh + gap, maxPerRow = 7;
     for (var p = 0; p < 4; p++) {
       var disc = st.discards[p];
       if (!disc || disc.length === 0) continue;
-      var show = Math.min(disc.length, maxShow);
-      var rowW = show * cw, sx, sy, horiz;
-      if (p === 0) { sx = cx - rowW / 2; sy = top + th - dh - 3 * sc; horiz = true; }
-      else if (p === 1) { sx = cx - rowW / 2; sy = top + 3 * sc; horiz = true; }
-      else if (p === 2) { sx = sw + 3 * sc; sy = top + th / 2 - (show * cw) / 2; horiz = false; }
-      else { sx = W - sw - dw - 3 * sc; sy = top + th / 2 - (show * cw) / 2; horiz = false; }
+      var show = Math.min(disc.length, maxPerRow * 3);
+      var rows = Math.ceil(show / maxPerRow);
+      var horiz = (p === 0 || p === 1);
+
+      // 每家弃牌区中心点：在桌面内、靠近自家一侧
+      var areaCx, areaCy;
+      if (p === 0) { areaCx = cx; areaCy = top + th - dh * rows - 12 * sc; }      // 底部玩家：桌面下方
+      else if (p === 1) { areaCx = cx; areaCy = top + 10 * sc; }                   // 顶部AI：桌面上方
+      else if (p === 2) { areaCx = sw + 10 * sc; areaCy = top + th * 0.55; }       // 左侧AI：桌面左侧
+      else { areaCx = W - sw - dw - 10 * sc; areaCy = top + th * 0.55; }           // 右侧AI：桌面右侧
+
       for (var i = 0; i < show; i++) {
-        tile(horiz ? sx + i * cw : sx, horiz ? sy : sy + i * cw, dw, dh, disc[i], true, false, false);
+        var row = Math.floor(i / maxPerRow), col = i % maxPerRow;
+        var rowCount = (row < rows - 1) ? maxPerRow : (show - row * maxPerRow);
+        var rowW = rowCount * cw;
+        var tx, ty;
+        if (horiz) {
+          tx = areaCx - rowW / 2 + col * cw;
+          ty = areaCy + row * ch;
+        } else {
+          tx = areaCx + row * ch;
+          ty = areaCy - rowW / 2 + col * cw;
+        }
+        tile(tx, ty, dw, dh, disc[i], true, false, false);
       }
     }
   }
