@@ -260,59 +260,44 @@ window.Renderer = (function () {
   }
 
   /* ==== 公共弃牌布局计算 ==== */
-  function _calcDiscardAreas(tableL, tableTop, tableW, tableH, dPitchX, dPitchY, dw, dh, gap) {
-    // 弃牌区占桌面中央 85%
-    var daL = tableL + tableW * 0.075;
-    var daT = tableTop + tableH * 0.075;
-    var daW = tableW * 0.85;
-    var daH = tableH * 0.85;
-    var daR = daL + daW;
-    var daB = daT + daH;
+  function _calcDiscardAreas(tableL, tableTop, tableW, tableH, dPitchX, dPitchY, dw, dh, gap, playerY) {
+    // 弃牌紧挨每家手牌前面（靠近桌面中心方向）
+    // 南家手牌在 playerY，弃牌在 playerY 上方
+    // 北家手牌在 topH，弃牌在 topH 下方
+    // 西家手牌在 sideW，弃牌在 sideW 右侧
+    // 东家手牌在 W-sideW，弃牌在左侧
 
-    // 竖排弃牌(西/东)各占2列宽
-    var vertCols = 2;
-    var vertW = dPitchX * vertCols + gap * 2;
-    // 中间横排可用宽度
-    var midW = daW - vertW * 2 - gap * 4;
-    var horzCols = Math.max(3, Math.floor(midW / dPitchX));
-    // 中间横排可用高度（各占一半减去间距）
-    var midH = daH;
-    var horzRows = Math.max(2, Math.floor((midH * 0.42) / dPitchY));
+    var horzCols = 7; // 横排最多7张
+    var vertRows = 6; // 竖排每列6张
 
     return {
-      // 南(0)：横排，弃牌区下半部分
+      // 南(0)：横排，在手牌上方
       0: {
-        x: daL + vertW + gap * 3,
-        y: daB - horzRows * dPitchY - gap,
-        cols: horzCols,
-        tw: dw, th: dh,
-        mode: 'h'
+        x: tableL + (tableW - horzCols * (dw + gap)) / 2,
+        y: playerY - dh - gap * 3,
+        cols: horzCols, tw: dw, th: dh,
+        mode: 'h', growUp: false
       },
-      // 北(1)：横排，弃牌区上半部分
+      // 北(1)：横排，在北家手牌下方
       1: {
-        x: daL + vertW + gap * 3,
-        y: daT + gap,
-        cols: horzCols,
-        tw: dw, th: dh,
-        mode: 'h'
+        x: tableL + (tableW - horzCols * (dw + gap)) / 2,
+        y: tableTop + Math.round(tableH * 0.12),
+        cols: horzCols, tw: dw, th: dh,
+        mode: 'h', growUp: false
       },
-      // 西(2)：竖排（从上到下），弃牌区左侧
+      // 西(2)：竖排，在西家手牌右侧
       2: {
-        x: daL + gap,
-        y: daT + gap,
-        rows: Math.max(3, Math.floor(daH / dPitchY)),
-        cols: vertCols,
-        tw: dw, th: dh,
-        mode: 'v'
+        x: tableL + Math.round(tableW * 0.08),
+        y: tableTop + Math.round(tableH * 0.15),
+        rows: vertRows, cols: 2, tw: dw, th: dh,
+        mode: 'v', reverseCol: false
       },
-      // 东(3)：竖排（从上到下），弃牌区右侧
+      // 东(3)：竖排，在东家手牌左侧
       3: {
-        x: daR - dPitchX * vertCols - gap,
-        y: daT + gap,
-        rows: Math.max(3, Math.floor(daH / dPitchY)),
-        cols: vertCols,
-        tw: dw, th: dh,
-        mode: 'v'
+        x: tableL + tableW - Math.round(tableW * 0.08) - 2 * (dw + gap),
+        y: tableTop + Math.round(tableH * 0.15),
+        rows: vertRows, cols: 2, tw: dw, th: dh,
+        mode: 'v', reverseCol: true
       }
     };
   }
@@ -375,7 +360,7 @@ window.Renderer = (function () {
     // 东家
     L.right = { cx: W - sideW * 0.5, cy: tableTop + tableH * 0.5 };
 
-    L.discard = _calcDiscardAreas(tableL, tableTop, tableW, tableH, dPitchX, dPitchY, dw, dh, dGap);
+    L.discard = _calcDiscardAreas(tableL, tableTop, tableW, tableH, dPitchX, dPitchY, dw, dh, dGap, L.playerY);
   }
 
   /* ==== 横屏布局 ==== */
@@ -428,7 +413,7 @@ window.Renderer = (function () {
     L.left  = { cx: sideW * 0.5, cy: tableTop + tableH * 0.5 };
     L.right = { cx: W - sideW * 0.5, cy: tableTop + tableH * 0.5 };
 
-    L.discard = _calcDiscardAreas(tableL, tableTop, tableW, tableH, dPitchX, dPitchY, dw, dh, dGap);
+    L.discard = _calcDiscardAreas(tableL, tableTop, tableW, tableH, dPitchX, dPitchY, dw, dh, dGap, L.playerY);
   }
 
   /* ================================================================
@@ -498,10 +483,17 @@ window.Renderer = (function () {
       drawTile(sx + i * (tw + gap), L2.cy - th / 2, tw, th, 0, false, false, false);
     }
 
-    // 副露在手牌下方
+    // 副露在手牌下方（居中，避免和弃牌重叠）
     var melds = st.melds[pid] || [];
     if (melds.length > 0) {
-      drawMelds(melds, sx, L2.cy + th / 2 + 4, true);
+      var meldGap = 4;
+      var totalMeldW = 0;
+      for (var m = 0; m < melds.length; m++) {
+        var tc = melds[m].type === 'gang' ? 4 : 3;
+        totalMeldW += tc * (L.mw + 2) + meldGap;
+      }
+      var meldX = L2.cx - totalMeldW / 2;
+      drawMelds(melds, meldX, L2.cy + th / 2 + 4, true);
     }
   }
 
@@ -531,10 +523,10 @@ window.Renderer = (function () {
       drawTile(startX, startY + i * (th + gap), tw, th, 0, false, false, false);
     }
 
-    // 副露在手牌右边
+    // 副露在手牌右边（竖排，避免和弃牌重叠）
     var melds = st.melds[pid] || [];
     if (melds.length > 0) {
-      drawMelds(melds, startX + tw + 6, startY, true);
+      drawMelds(melds, startX + tw + 6, startY, false);
     }
   }
 
@@ -563,16 +555,10 @@ window.Renderer = (function () {
       drawTile(startX, startY + i * (th + gap), tw, th, 0, false, false, false);
     }
 
-    // 副露在手牌左边
+    // 副露在手牌左边（竖排，避免和弃牌重叠）
     var melds = st.melds[pid] || [];
     if (melds.length > 0) {
-      var meldW = 0;
-      var meldGap = 4;
-      for (var m = 0; m < melds.length; m++) {
-        var tc = melds[m].type === 'gang' ? 4 : 3;
-        meldW += tc * (L.mw + 2) + meldGap;
-      }
-      drawMelds(melds, startX - meldW - 6, startY, true);
+      drawMelds(melds, startX - L.mw - 6, startY, false);
     }
   }
 
@@ -666,23 +652,35 @@ window.Renderer = (function () {
     var dPitchY = dh + gap;
 
     if (area.mode === 'v') {
-      // 竖排：从上到下，每列到rows后换列
+      // 竖排：从上到下，每列到 rows 后换列
       var rows = area.rows || 6;
       for (var i = 0; i < disc.length; i++) {
         var col = Math.floor(i / rows);
         var row = i % rows;
-        var tx = area.x + col * dPitchX;
+        var tx;
+        if (area.reverseCol) {
+          // 东家：从右往左换列
+          tx = area.x + (area.cols - 1 - col) * dPitchX;
+        } else {
+          tx = area.x + col * dPitchX;
+        }
         var ty = area.y + row * dPitchY;
         drawTile(tx, ty, dw, dh, disc[i], true, false, false);
       }
     } else {
-      // 横排：从左到右，超过cols换行
+      // 横排：从左到右，超过 cols 换行
       var cols = area.cols || 7;
       for (var i = 0; i < disc.length; i++) {
         var row = Math.floor(i / cols);
         var col = i % cols;
         var tx = area.x + col * dPitchX;
-        var ty = area.y + row * dPitchY;
+        var ty;
+        if (area.growUp) {
+          // 南家：从下往上增长行（第一行在最下面）
+          ty = area.y - row * dPitchY;
+        } else {
+          ty = area.y + row * dPitchY;
+        }
         drawTile(tx, ty, dw, dh, disc[i], true, false, false);
       }
     }
