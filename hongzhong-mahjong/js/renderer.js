@@ -40,6 +40,8 @@ window.Renderer = (function() {
   // ======================================================================
 
   function drawRoundedRect(x, y, w, h, r) {
+    if (w <= 0 || h <= 0) return;
+    r = Math.max(0, Math.min(r, w/2, h/2));
     ctx.beginPath();
     ctx.moveTo(x + r, y);
     ctx.lineTo(x + w - r, y);
@@ -54,6 +56,7 @@ window.Renderer = (function() {
   }
 
   function drawCircle(x, y, r, fill, stroke) {
+    if (r <= 0) return;
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fillStyle = fill;
@@ -70,7 +73,8 @@ window.Renderer = (function() {
   // ======================================================================
 
   function drawTile(x, y, w, h, tileId, faceUp, selected, isNew) {
-    const r = Math.min(w, h) * 0.08;
+    if (w <= 0 || h <= 0) return;
+    var r = Math.min(w, h) * 0.08;
     let drawY = y;
     if (selected) drawY -= 12 * sc;
     if (isNew) drawY -= 8 * sc;
