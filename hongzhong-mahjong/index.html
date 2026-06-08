@@ -126,6 +126,8 @@ canvas { display: block; touch-action: none; -webkit-tap-highlight-color: transp
 <body>
 <canvas id="gameCanvas"></canvas>
 <div id="status-bar">红中麻将</div>
+<div id="err" style="position:fixed;top:0;left:0;right:0;z-index:99999;background:red;color:#fff;font:bold 12px monospace;padding:6px;display:none;word-break:break-all;"></div>
+<script>window.onerror=function(m,s,l){document.getElementById('err').style.display='block';document.getElementById('err').textContent=m+' @'+s+':'+l;};</script>
 <button id="btnNewGame">新局</button>
 <div id="ui-overlay">
   <button id="btnHu" disabled>胡</button>
