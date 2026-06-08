@@ -429,6 +429,22 @@ window.Renderer = (function() {
     ctx.restore();
   }
 
+  function drawPortraitTurnIndicator(st, topH, sideW, tableH, bottomH, cx) {
+    if (st.phase!=='playerTurn'&&st.phase!=='aiTurn') return;
+    const pos={
+      0:[cx, H-bottomH-6*sc],
+      1:[cx, topH+10*sc],
+      2:[sideW+10*sc, topH+tableH/2],
+      3:[W-sideW-10*sc, topH+tableH/2]
+    };
+    const [ix,iy]=pos[st.currentPlayer]||pos[0];
+    ctx.save(); ctx.fillStyle='rgba(255,215,0,0.2)';
+    ctx.beginPath(); ctx.arc(ix,iy,14*sc,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#FFD700'; ctx.beginPath(); ctx.arc(ix,iy,8*sc,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='rgba(255,215,0,0.35)'; ctx.beginPath(); ctx.arc(ix,iy,12*sc,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+
   // ======================================================================
   //  竖屏 四人对战（参考标准麻将APP）
   // ======================================================================
