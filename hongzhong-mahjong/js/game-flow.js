@@ -63,7 +63,7 @@ window.GameFlow = (function() {
     try { render(); } catch(e) { console.error('startNewGame渲染异常:', e); }
 
     if (st.dealerIdx !== 0) {
-      setTimeout(() => aiTurn(st.dealerIdx), 800);
+      _setTimer(() => aiTurn(st.dealerIdx), 800);
     }
   }
 
@@ -140,7 +140,7 @@ window.GameFlow = (function() {
 
     // 安全定时器：3秒后如果还卡在aiTurn就强制推进
     if (_aiSafetyTimer) clearTimeout(_aiSafetyTimer);
-    _aiSafetyTimer = setTimeout(() => {
+    _aiSafetyTimer = _setTimer(() => {
       const cur = s();
       if (cur.phase === 'aiTurn' && cur.currentPlayer === playerIdx) {
         console.warn('AI超时，强制推进');
@@ -149,7 +149,7 @@ window.GameFlow = (function() {
       }
     }, 3000);
 
-    setTimeout(() => {
+    _setTimer(() => {
       // 清除安全定时器（AI已经开始执行了）
       if (_aiSafetyTimer) { clearTimeout(_aiSafetyTimer); _aiSafetyTimer = null; }
       // 检查是否还是这个AI的回合（防止安全定时器已跳过）
@@ -180,7 +180,7 @@ window.GameFlow = (function() {
           const gangBase = selfGangs[0];
           performGang(playerIdx, -1, gangBase);
           st.isAfterGang = true;
-          setTimeout(() => aiTurn(playerIdx), 600);
+          _setTimer(() => aiTurn(playerIdx), 600);
           return;
         }
 
