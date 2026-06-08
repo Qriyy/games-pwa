@@ -498,8 +498,11 @@ window.Renderer = (function () {
       drawTile(sx + i * (tw + gap), L2.cy - th / 2, tw, th, 0, false, false, false);
     }
 
-    // 副露在牌背右侧
-    drawMelds(st.melds[pid], sx + totalW + 8, L2.cy - th / 2, true);
+    // 副露在手牌下方
+    var melds = st.melds[pid] || [];
+    if (melds.length > 0) {
+      drawMelds(melds, sx, L2.cy + th / 2 + 4, true);
+    }
   }
 
   /* ================================================================
@@ -513,20 +516,26 @@ window.Renderer = (function () {
     var gap = L.aiGap;
     var count = hand.length;
 
+    // 横向牌从上往下排列，居中于侧栏
+    var totalH = count * (th + gap) - gap;
+    var startX = L2.cx - tw / 2;
+    var startY = L2.cy - totalH / 2;
+
     // 风圈和分数在牌堆上方
     var avatarR = Math.max(8, Math.round(10 * (L.scale || 1)));
-    drawWindCircle(L2.cx, L2.cy - th / 2 - avatarR - 4, avatarR, '西', pid, st);
-    drawScore(L2.cx, L2.cy - th / 2 - avatarR * 2 - 6, pid, st, 'center', 8);
+    drawWindCircle(L2.cx, startY - avatarR - 4, avatarR, '西', pid, st);
+    drawScore(L2.cx, startY - avatarR * 2 - 6, pid, st, 'center', 8);
 
-    // 俯视堆叠：每张微微向右偏移（从上往下看一摞横放的牌）
-    var startX = L2.cx - tw / 2;
-    var startY = L2.cy - th / 2;
+    // 从上往下排列：每张牌一张接一张，不重叠
     for (var i = 0; i < count; i++) {
-      drawTile(startX + i * gap, startY, tw, th, 0, false, false, false);
+      drawTile(startX, startY + i * (th + gap), tw, th, 0, false, false, false);
     }
 
-    // 副露在牌堆下方
-    drawMelds(st.melds[pid], L2.cx - L.mw / 2, startY + th + 6, true);
+    // 副露在手牌右边
+    var melds = st.melds[pid] || [];
+    if (melds.length > 0) {
+      drawMelds(melds, startX + tw + 6, startY, true);
+    }
   }
 
   /* ================================================================
@@ -540,19 +549,31 @@ window.Renderer = (function () {
     var gap = L.aiGap;
     var count = hand.length;
 
-    var avatarR = Math.max(8, Math.round(10 * (L.scale || 1)));
-    drawWindCircle(L2.cx, L2.cy - th / 2 - avatarR - 4, avatarR, '东', pid, st);
-    drawScore(L2.cx, L2.cy - th / 2 - avatarR * 2 - 6, pid, st, 'center', 8);
-
-    // 俯视堆叠：每张微微向左偏移
+    // 横向牌从上往下排列，居中于侧栏
+    var totalH = count * (th + gap) - gap;
     var startX = L2.cx - tw / 2;
-    var startY = L2.cy - th / 2;
+    var startY = L2.cy - totalH / 2;
+
+    var avatarR = Math.max(8, Math.round(10 * (L.scale || 1)));
+    drawWindCircle(L2.cx, startY - avatarR - 4, avatarR, '东', pid, st);
+    drawScore(L2.cx, startY - avatarR * 2 - 6, pid, st, 'center', 8);
+
+    // 从上往下排列：每张牌一张接一张，不重叠
     for (var i = 0; i < count; i++) {
-      drawTile(startX - i * gap, startY, tw, th, 0, false, false, false);
+      drawTile(startX, startY + i * (th + gap), tw, th, 0, false, false, false);
     }
 
-    // 副露在牌堆下方
-    drawMelds(st.melds[pid], L2.cx - L.mw / 2, startY + th + 6, true);
+    // 副露在手牌左边
+    var melds = st.melds[pid] || [];
+    if (melds.length > 0) {
+      var meldW = 0;
+      var meldGap = 4;
+      for (var m = 0; m < melds.length; m++) {
+        var tc = melds[m].type === 'gang' ? 4 : 3;
+        meldW += tc * (L.mw + 2) + meldGap;
+      }
+      drawMelds(melds, startX - meldW - 6, startY, true);
+    }
   }
 
   /* ================================================================
