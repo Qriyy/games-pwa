@@ -283,8 +283,8 @@ window.Renderer = (function() {
     drawPortraitDiscards(st, tableTop, tableH, sideW, cx);
     drawPortraitWall(st, cx, tableBot - 14*sc);
     drawPortraitTopAI(st, topH, cx);
-    drawPortraitSideAI(st, 2, 0, topH, sideW, tableH, false);
-    drawPortraitSideAI(st, 3, W - sideW, topH, sideW, tableH, true);
+    drawPortraitSideAI(st, 2, 0, topH, sideW, tableH, false);          // 西（玩家左手边）
+    drawPortraitSideAI(st, 3, W - sideW, topH, sideW, tableH, true);   // 东（玩家右手边）
     drawPortraitBottom(st, bottomH);
     drawPortraitTurnIndicator(st, topH, sideW, tableH, bottomH, cx);
   }
@@ -437,35 +437,6 @@ window.Renderer = (function() {
   // ======================================================================
   //  竖屏渲染（移动端）
   // ======================================================================
-
-  function renderPortrait() {
-    const st = window.state;
-    const cx = W / 2;
-    const topH    = H * 0.10;
-    const sideW   = W * 0.14;
-    const bottomH = H * 0.22;
-    const tableTop = topH;
-    const tableBot = H - bottomH;
-    const tableH  = tableBot - tableTop;
-
-    // 1. 桌面背景
-    drawPortraitTable(tableTop, tableH, sideW);
-
-    // 2. 弃牌区（每人一行，靠近自己一侧）
-    drawPortraitDiscards(st, tableTop, tableH, sideW, cx);
-
-    // 3. 牌墙信息
-    drawPortraitWall(st, cx, tableBot - 14*sc);
-
-    // 4. 四家
-    drawPortraitTopAI(st, topH, cx);                                    // 北（对面）
-    drawPortraitSideAI(st, 2, 0, topH, sideW, tableH, false);          // 西（左）
-    drawPortraitSideAI(st, 3, W - sideW, topH, sideW, tableH, true);   // 东（右）
-    drawPortraitBottom(st, bottomH);                                    // 南（玩家）
-
-    // 5. 回合指示
-    drawPortraitTurnIndicator(st, topH, sideW, tableH, bottomH, cx);
-  }
 
   // ===== 桌面 =====
   function drawPortraitTable(topY, tableH, sideW) {
