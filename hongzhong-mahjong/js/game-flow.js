@@ -139,13 +139,20 @@ window.GameFlow = (function() {
     // 安全定时器：3秒后如果还卡在aiTurn就强制推进
     if (_aiSafetyTimer) clearTimeout(_aiSafetyTimer);
     _aiSafetyTimer = setTimeout(() => {
-      if (s().phase === 'aiTurn') {
+      const cur = s();
+      if (cur.phase === 'aiTurn' && cur.currentPlayer === playerIdx) {
         console.warn('AI超时，强制推进');
+        _aiSafetyTimer = null;
         nextTurn(playerIdx);
       }
     }, 3000);
 
     setTimeout(() => {
+      // 清除安全定时器（AI已经开始执行了）
+      if (_aiSafetyTimer) { clearTimeout(_aiSafetyTimer); _aiSafetyTimer = null; }
+      // 检查是否还是这个AI的回合（防止安全定时器已跳过）
+      const cur = s();
+      if (cur.phase !== 'aiTurn' || cur.currentPlayer !== playerIdx) return;
       try {
         if (st.deck.length === 0) {
           endGame(-1, 'draw');
