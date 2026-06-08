@@ -1,44 +1,47 @@
 /**
- * 红中麻将 — 渲染模块（移动端成熟方案）
- * - DPI 自适应 canvas
- * - 百分比布局，适配所有手机尺寸
- * - 所有绘制函数带边界保护
+ * 红中麻将 — Canvas 渲染器（重写版）
+ * - 竖屏优先布局（手机竖屏最优）
+ * - DPI 自适应（devicePixelRatio）
+ * - 暗色主题，雀魂风格配色
+ * - 牌面：万蓝 / 条绿 / 筒红 / 红中大红字
+ * - 四家：北(上) 西(左) 东(右) 南(下=玩家)
+ * - 操作按钮由 HTML 渲染，canvas 不画按钮
  */
-window.Renderer = (function() {
-  var C = window.Constants.C;
-  var LAYOUT = window.Constants.LAYOUT;
+window.Renderer = (function () {
+  'use strict';
+
+  var C       = window.Constants.C;
+  var LAYOUT  = window.Constants.LAYOUT;
   var SUIT_COLORS = window.Constants.SUIT_COLORS;
   var CN_NUMS = window.Constants.CN_NUMS;
-  var TONG_DOTS = window.Constants.TONG_DOTS;
-  var Tiles = window.Tiles;
+  var TONG_DOTS   = window.Constants.TONG_DOTS;
+  var Tiles   = window.Tiles;
 
+  /* ================================================================
+   *  Canvas & DPI
+   * ================================================================ */
   var canvas = document.getElementById('gameCanvas');
-  var ctx = canvas.getContext('2d');
-  var W, H, dpr, sc;
+  var ctx    = canvas.getContext('2d');
+  var W, H, dpr;
 
-  // ======================================================================
-  //  DPI 自适应 resize
-  // ======================================================================
-  function resize() {
+  function resize () {
     dpr = window.devicePixelRatio || 1;
-    W = window.innerWidth;
-    H = window.innerHeight;
-    // canvas 内部像素 = CSS 尺寸 × DPI
-    canvas.width = W * dpr;
-    canvas.height = H * dpr;
-    canvas.style.width = W + 'px';
+    W   = window.innerWidth;
+    H   = window.innerHeight;
+    canvas.width       = W * dpr;
+    canvas.height      = H * dpr;
+    canvas.style.width  = W + 'px';
     canvas.style.height = H + 'px';
-    // 所有绘制用 DPI 缩放
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    sc = Math.min(W / 375, 1.3);
+    _layoutDirty = true;
     render();
   }
   window.addEventListener('resize', resize);
 
-  // ======================================================================
-  //  安全绘图工具
-  // ======================================================================
-  function rr(x, y, w, h, r) {
+  /* ================================================================
+   *  绘图工具
+   * ================================================================ */
+  function rr (x, y, w, h, r) {
     if (w <= 0 || h <= 0) return;
     r = Math.max(0, Math.min(r || 0, w / 2, h / 2));
     ctx.beginPath();
@@ -54,40 +57,63 @@ window.Renderer = (function() {
     ctx.closePath();
   }
 
-  function circle(x, y, r, fill, stroke) {
-    if (r <= 0) return;
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
+  function fillRR (x, y, w, h, r, fill, stroke, lw) {
+    rr(x, y, w, h, r);
     ctx.fillStyle = fill;
     ctx.fill();
-    if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = 1.5; ctx.stroke(); }
+    if (stroke) {
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = lw || 1;
+      ctx.stroke();
+    }
   }
 
-  // ======================================================================
-  //  牌面绘制（纯 Canvas，零外部依赖）
-  // ======================================================================
-  function tile(x, y, w, h, id, up, sel, isNew) {
+  function circle (cx, cy, r, fill, stroke) {
+    if (r <= 0) return;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fillStyle = fill;
+    ctx.fill();
+    if (stroke) {
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+  }
+
+  function text (str, x, y, align, baseline, font, color) {
+    ctx.font = font;
+    ctx.fillStyle = color;
+    ctx.textAlign = align;
+    ctx.textBaseline = baseline;
+    ctx.fillText(str, x, y);
+  }
+
+  /* ================================================================
+   *  牌面绘制
+   * ================================================================ */
+  function drawTile (x, y, w, h, id, faceUp, selected, isNew) {
     if (w <= 0 || h <= 0) return;
     var r = Math.max(0, Math.min(w, h) * 0.08);
     var dy = y;
-    if (sel) dy -= Math.max(8, 12 * sc);
-    if (isNew && !sel) dy -= Math.max(4, 6 * sc);
+    if (selected) dy -= Math.max(4, h * 0.14);
+    else if (isNew) dy -= Math.max(2, h * 0.07);
 
     ctx.save();
-    if (sel) { ctx.shadowColor = 'rgba(212,165,69,0.6)'; ctx.shadowBlur = 12 * sc; }
-    else if (isNew) { ctx.shadowColor = 'rgba(255,255,200,0.3)'; ctx.shadowBlur = 6 * sc; }
+    if (selected) { ctx.shadowColor = 'rgba(255,215,0,0.6)'; ctx.shadowBlur = 14; }
+    else if (isNew) { ctx.shadowColor = 'rgba(255,255,200,0.25)'; ctx.shadowBlur = 6; }
 
-    if (!up) {
-      // 牌背
+    /* ---- 牌背 ---- */
+    if (!faceUp) {
       rr(x, dy, w, h, r);
-      var g = ctx.createLinearGradient(x, dy, x, dy + h);
-      g.addColorStop(0, '#2A5A7C'); g.addColorStop(0.5, '#1A3A5C'); g.addColorStop(1, '#0F1F30');
-      ctx.fillStyle = g; ctx.fill();
+      var bg = ctx.createLinearGradient(x, dy, x, dy + h);
+      bg.addColorStop(0, '#2A5A7C'); bg.addColorStop(0.5, '#1A3A5C'); bg.addColorStop(1, '#0F1F30');
+      ctx.fillStyle = bg; ctx.fill();
       ctx.strokeStyle = '#0D1A2A'; ctx.lineWidth = 0.8; ctx.stroke();
       ctx.restore(); return;
     }
 
-    // 牌面底色
+    /* ---- 牌面底色 ---- */
     rr(x, dy, w, h, r);
     var fg = ctx.createLinearGradient(x, dy, x, dy + h);
     fg.addColorStop(0, '#FFFDF5'); fg.addColorStop(0.7, '#F5EDD8'); fg.addColorStop(1, '#E8DDC0');
@@ -95,450 +121,460 @@ window.Renderer = (function() {
     ctx.strokeStyle = '#C8B890'; ctx.lineWidth = 0.6; ctx.stroke();
     ctx.restore();
 
-    // 牌面文字
     if (!id) return;
-    var cx = x + w / 2, cy = dy + h / 2;
 
+    var cx = x + w / 2;
+    var cy = dy + h / 2;
+
+    /* ---- 红中：大红字 ---- */
     if (Tiles.isHongzhong(id)) {
-      ctx.fillStyle = '#C43B2A';
-      ctx.font = 'bold ' + Math.max(8, Math.floor(h * 0.45)) + 'px "KaiTi","Microsoft YaHei",serif';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText('中', cx, cy);
-    } else {
-      var suit = Tiles.tileSuit(id), num = Tiles.tileNumber(id), color = SUIT_COLORS[suit] || '#333';
-      // 角标数字
-      var fs = Math.max(6, Math.floor(h * 0.17));
+      var zhFontSize = Math.max(10, Math.floor(h * 0.5));
+      text('中', cx, cy + 1, 'center', 'middle',
+           'bold ' + zhFontSize + 'px "KaiTi","STKaiti","SimSun",serif', '#C43B2A');
+      return;
+    }
+
+    var suit = Tiles.tileSuit(id);
+    var num  = Tiles.tileNumber(id);
+    var color = SUIT_COLORS[suit] || '#333';
+
+    /* ---- 角标数字 ---- */
+    var fs1 = Math.max(6, Math.floor(h * 0.16));
+    text('' + num, x + w * 0.12, dy + h * 0.06, 'left', 'top',
+         'bold ' + fs1 + 'px "Microsoft YaHei",sans-serif', color);
+    text('' + num, x + w * 0.88, dy + h * 0.94, 'right', 'bottom',
+         'bold ' + fs1 + 'px "Microsoft YaHei",sans-serif', color);
+
+    /* ---- 中心图案 ---- */
+    var fs2 = Math.max(10, Math.floor(h * 0.32));
+
+    if (suit === 'wan') {
+      text(CN_NUMS[num - 1] || '' + num, cx, cy, 'center', 'middle',
+           'bold ' + fs2 + 'px "KaiTi","STKaiti","Microsoft YaHei",serif', color);
+
+    } else if (suit === 'tiao') {
+      /* 条子 — 用小圆和短线组合 */
+      var dr = Math.max(1.2, Math.min(w, h) * 0.04);
+      var cols = num <= 3 ? 1 : (num <= 6 ? 2 : 3);
+      var rows = Math.ceil(num / cols);
+      var cw = w * 0.48 / cols;
+      var ch = h * 0.48 / rows;
+      var sx = cx - cw * (cols - 1) / 2;
+      var sy = cy - ch * (rows - 1) / 2;
       ctx.fillStyle = color;
-      ctx.font = 'bold ' + fs + 'px "Microsoft YaHei",sans-serif';
-      ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-      ctx.fillText('' + num, x + 2, dy + 1);
-      ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
-      ctx.fillText('' + num, x + w - 2, dy + h - 1);
-      // 中心图案
-      var fs2 = Math.max(8, Math.floor(h * 0.3));
-      if (suit === 'wan') {
-        ctx.fillStyle = color;
-        ctx.font = 'bold ' + fs2 + 'px "KaiTi","Microsoft YaHei",serif';
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText(CN_NUMS[num - 1] || '' + num, cx, cy);
-      } else if (suit === 'tiao') {
-        var dr = Math.max(1, Math.min(w, h) * 0.04);
-        var cols = num <= 3 ? 1 : (num <= 6 ? 2 : 3), rows = Math.ceil(num / cols);
-        var cw = w * 0.5 / cols, ch = h * 0.5 / rows;
-        var sx = cx - cw * (cols - 1) / 2, sy = cy - ch * (rows - 1) / 2;
-        ctx.strokeStyle = '#1A6A2A'; ctx.fillStyle = '#1A6A2A';
-        for (var i = 0; i < num; i++) {
-          var px = sx + (i % cols) * cw, py = sy + Math.floor(i / cols) * ch;
-          ctx.lineWidth = dr; ctx.beginPath(); ctx.moveTo(px, py - ch * 0.3); ctx.lineTo(px, py + ch * 0.3); ctx.stroke();
-          ctx.lineWidth = dr * 1.5; ctx.beginPath(); ctx.moveTo(px - dr, py); ctx.lineTo(px + dr, py); ctx.stroke();
-          ctx.beginPath(); ctx.arc(px, py - ch * 0.3, dr, 0, Math.PI * 2); ctx.fill();
-        }
-      } else if (suit === 'tong') {
-        var dots = TONG_DOTS[num]; var dotR = Math.max(1.5, Math.min(w, h) * 0.06); var unit = Math.min(w, h) * 0.11;
-        if (dots) {
-          ctx.strokeStyle = '#8A2A1A'; ctx.fillStyle = '#8A2A1A';
-          for (var d = 0; d < dots.length; d++) {
-            var dx = cx + dots[d][1] * unit, dy2 = cy + dots[d][0] * unit;
-            ctx.lineWidth = Math.max(0.5, dotR * 0.3);
-            ctx.beginPath(); ctx.arc(dx, dy2, dotR, 0, Math.PI * 2); ctx.stroke();
-            ctx.beginPath(); ctx.arc(dx, dy2, dotR * 0.4, 0, Math.PI * 2); ctx.fill();
-          }
+      ctx.strokeStyle = color;
+      for (var i = 0; i < num; i++) {
+        var px = sx + (i % cols) * cw;
+        var py = sy + Math.floor(i / cols) * ch;
+        ctx.lineWidth = dr * 1.3;
+        ctx.beginPath(); ctx.moveTo(px, py - ch * 0.32); ctx.lineTo(px, py + ch * 0.32); ctx.stroke();
+        ctx.lineWidth = dr * 2;
+        ctx.beginPath(); ctx.moveTo(px - dr * 1.2, py); ctx.lineTo(px + dr * 1.2, py); ctx.stroke();
+        ctx.beginPath(); ctx.arc(px, py - ch * 0.32, dr, 0, Math.PI * 2); ctx.fill();
+      }
+
+    } else if (suit === 'tong') {
+      /* 筒子 — 圆环+实心点 */
+      var dots  = TONG_DOTS[num];
+      var dotR  = Math.max(1.8, Math.min(w, h) * 0.06);
+      var unit  = Math.min(w, h) * 0.11;
+      if (dots) {
+        ctx.strokeStyle = color;
+        ctx.fillStyle   = color;
+        for (var d = 0; d < dots.length; d++) {
+          var dx = cx + dots[d][1] * unit;
+          var ddy = cy + dots[d][0] * unit;
+          ctx.lineWidth = Math.max(0.6, dotR * 0.3);
+          ctx.beginPath(); ctx.arc(dx, ddy, dotR, 0, Math.PI * 2); ctx.stroke();
+          ctx.beginPath(); ctx.arc(dx, ddy, dotR * 0.4, 0, Math.PI * 2); ctx.fill();
         }
       }
     }
   }
 
-  // ======================================================================
-  //  主渲染
-  // ======================================================================
-  function render() {
-    var st = window.state;
-    if (!st || !st.hands) return;
-    try { _render(st); } catch(e) { console.error('render:', e.message); }
-  }
+  /* ================================================================
+   *  牌面尺寸（静态参照，按手机竖屏 375×750 标定）
+   * ================================================================ */
+  var TW_PLAYER = 43;   // 玩家手牌宽
+  var TH_PLAYER = 57;   // 玩家手牌高
+  var TW_AI_TOP = 18;   // 北家牌背宽
+  var TH_AI_TOP = 25;   // 北家牌背高
+  var TW_AI_SIDE = 14;  // 左右家牌背宽
+  var TH_AI_SIDE = 20;  // 左右家牌背高
+  var TW_DISC   = 20;   // 弃牌宽
+  var TH_DISC   = 27;   // 弃牌高
+  var TW_MELD   = 28;   // 副露牌宽
+  var TH_MELD   = 37;   // 副露牌高
 
-  function _render(st) {
-    ctx.fillStyle = C.BG;
-    ctx.fillRect(0, 0, W, H);
+  /* ================================================================
+   *  布局缓存
+   * ================================================================ */
+  var L = {};            // 布局坐标缓存
+  var _layoutDirty = true;
 
-    // 竖屏优先布局
+  function _calcLayout () {
     var isPortrait = H > W;
-    var cx = W / 2;
+
+    /* 按钮区域：取 #ui-overlay 元素的实际高度，默认 62px */
+    var btnEl = document.getElementById('ui-overlay');
+    var btnH = btnEl ? (btnEl.offsetHeight || 62) : 62;
 
     if (isPortrait) {
-      // ===== 竖屏布局 =====
-      var btnZoneH = 70;                     // 按钮区固定高度
-      var playerH = Math.max(90, H * 0.18);  // 玩家手牌区
-      var topAIH = Math.max(40, H * 0.06);   // 北AI区
-      var sideAIW = Math.max(36, W * 0.1);   // 左右侧AI区
-      var tableTop = topAIH;
-      var tableBot = H - playerH - btnZoneH;
-      var tableH = Math.max(100, tableBot - tableTop);
-
-      // 桌面
-      _tablePortrait(tableTop, tableH, sideAIW, cx);
-
-      // 弃牌区（桌面内，每家面前）
-      _discardsPortrait(st, tableTop, tableH, sideAIW, cx);
-
-      // 牌墙
-      _wall(st, cx, tableBot - 10);
-
-      // 四家
-      _topAIPortrait(st, topAIH, cx);
-      _sideAIPortrait(st, 2, 0, tableTop, sideAIW, tableH);            // 西（左）
-      _sideAIPortrait(st, 3, W - sideAIW, tableTop, sideAIW, tableH);  // 东（右）
-      _bottomPortrait(st, tableBot, H - btnZoneH, cx);
-
-      // 回合指示
-      _indicatorPortrait(st, tableTop, tableH, sideAIW, cx);
-    } else {
-      // ===== 横屏布局（保持原有） =====
-      var topH = H * 0.09;
-      var sideW = W * 0.14;
-      var bottomH = H * 0.27;
+      /* ---- 竖屏布局 ---- */
+      var topH  = Math.round(H * 0.085);
+      var sideW = Math.round(W * 0.12);
+      var playerH = Math.round(H * 0.32);
       var tableTop = topH;
-      var tableBot = H - bottomH;
-      var tableH = tableBot - tableTop;
+      var tableBot = H - btnH - playerH;
+      var tableH = Math.max(60, tableBot - tableTop);
+      var tableL = sideW;
+      var tableR = W - sideW;
+      var tableW = tableR - tableL;
+      var cx = W / 2;
 
-      _table(tableTop, tableH, sideW, cx);
-      _discards(st, tableTop, tableH, sideW, cx);
-      _wall(st, cx, tableBot - 12 * sc);
-      _topAI(st, topH, cx);
-      _sideAI(st, 2, 0, topH, sideW, tableH, false);
-      _sideAI(st, 3, W - sideW, topH, sideW, tableH, true);
-      _bottom(st, bottomH, cx);
-      _indicator(st, topH, sideW, tableH, bottomH, cx);
+      L.isPortrait = true;
+
+      /* 桌面 */
+      L.table = { l: tableL, t: tableTop, r: tableR, b: tableTop + tableH, cx: cx, cy: tableTop + tableH / 2 };
+
+      /* 北家（上） */
+      L.top = { cx: cx, cy: topH / 2 + 4, tw: TW_AI_TOP, th: TH_AI_TOP };
+
+      /* 西家（左） */
+      L.left = { cx: sideW / 2, cy: tableTop + tableH * 0.35, tw: TW_AI_SIDE, th: TH_AI_SIDE };
+
+      /* 东家（右） */
+      L.right = { cx: W - sideW / 2, cy: tableTop + tableH * 0.35, tw: TW_AI_SIDE, th: TH_AI_SIDE };
+
+      /* 弃牌区 */
+      var dW = TW_DISC, dH = TH_DISC, dGap = 1.5;
+      var dPitchX = dW + dGap, dPitchY = dH + dGap;
+      var dCols = Math.max(4, Math.floor(tableW * 0.85 / dPitchX));
+
+      var bDiscH = 2 * dPitchY;
+      L.discard = {
+        0: { x: tableL + tableW * 0.08, y: tableTop + tableH - dPitchY - 4, cols: dCols, tw: dW, th: dH },
+        1: { x: tableL + tableW * 0.08, y: tableTop + 4,                    cols: dCols, tw: dW, th: dH },
+        2: { x: sideW + 2, y: tableTop + tableH * 0.38,  cols: dCols, tw: dW, th: dH },
+        3: { x: W - sideW - dW - 2, y: tableTop + tableH * 0.38, cols: dCols, tw: dW, th: dH }
+      };
+
+      /* 玩家区 */
+      L.playerBar = { y: H - btnH - playerH, h: 20 };
+      L.playerHand = { y: H - btnH - playerH + 22, baseW: TW_PLAYER, baseH: TH_PLAYER };
+
+    } else {
+      /* ---- 横屏布局 ---- */
+      var topH2  = Math.round(H * 0.10);
+      var sideW2 = Math.round(W * 0.12);
+      var bottomH2 = Math.round(H * 0.30);
+      var tableTop2 = topH2;
+      var tableBot2 = H - bottomH2;
+      var tableH2 = Math.max(60, tableBot2 - tableTop2);
+      var tableL2 = sideW2;
+      var tableR2 = W - sideW2;
+      var tableW2 = tableR2 - tableL2;
+      var cx2 = W / 2;
+
+      L.isPortrait = false;
+
+      L.table = { l: tableL2, t: tableTop2, r: tableR2, b: tableTop2 + tableH2, cx: cx2, cy: tableTop2 + tableH2 / 2 };
+
+      L.top = { cx: cx2, cy: topH2 / 2 + 4, tw: TW_AI_TOP, th: TH_AI_TOP };
+      L.left = { cx: sideW2 / 2, cy: tableTop2 + tableH2 * 0.35, tw: TW_AI_SIDE, th: TH_AI_SIDE };
+      L.right = { cx: W - sideW2 / 2, cy: tableTop2 + tableH2 * 0.35, tw: TW_AI_SIDE, th: TH_AI_SIDE };
+
+      var dW2 = TW_DISC, dH2 = TH_DISC, dG2 = 1.5;
+      var dPX2 = dW2 + dG2, dPY2 = dH2 + dG2;
+      var dCols2 = Math.max(4, Math.floor(tableW2 * 0.85 / dPX2));
+
+      L.discard = {
+        0: { x: tableL2 + tableW2 * 0.08, y: tableTop2 + tableH2 - dPY2 - 4, cols: dCols2, tw: dW2, th: dH2 },
+        1: { x: tableL2 + tableW2 * 0.08, y: tableTop2 + 4,                     cols: dCols2, tw: dW2, th: dH2 },
+        2: { x: sideW2 + 2, y: tableTop2 + tableH2 * 0.38,   cols: dCols2, tw: dW2, th: dH2 },
+        3: { x: W - sideW2 - dW2 - 2, y: tableTop2 + tableH2 * 0.38, cols: dCols2, tw: dW2, th: dH2 }
+      };
+
+      L.playerBar = { y: H - bottomH2, h: 20 };
+      L.playerHand = { y: H - bottomH2 + 22, baseW: TW_PLAYER, baseH: TH_PLAYER };
     }
   }
 
-  // ===== 桌面 =====
-  function _table(top, th, sw, cx) {
-    var cy = top + th / 2, tw = W - sw * 2 - 2 * sc, tth = th * 0.96;
-    if (tw <= 0 || tth <= 0) return;
-    ctx.save();
-    ctx.shadowColor = 'rgba(0,0,0,0.3)'; ctx.shadowBlur = 6 * sc;
-    rr(cx - tw / 2, cy - tth / 2, tw, tth, 6);
-    var g = ctx.createRadialGradient(cx, cy, 4, cx, cy, tw * 0.45);
-    g.addColorStop(0, C.TABLE_LIGHT); g.addColorStop(0.5, C.TABLE_PRIMARY); g.addColorStop(1, C.TABLE_EDGE);
-    ctx.fillStyle = g; ctx.fill();
-    ctx.restore();
-    ctx.strokeStyle = 'rgba(0,0,0,0.12)'; ctx.lineWidth = 1;
-    rr(cx - tw / 2, cy - tth / 2, tw, tth, 6); ctx.stroke();
-    // 中心标记
-    circle(cx, cy, 12 * sc, C.TABLE_FRAME, 'rgba(212,165,69,0.3)');
-    ctx.fillStyle = C.GOLD; ctx.font = 'bold ' + Math.max(8, 10 * sc) + 'px "Microsoft YaHei"';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('南', cx, cy);
+  /* ================================================================
+   *  绘制辅助：风圈头像
+   * ================================================================ */
+  function drawWindCircle (cx, cy, r, label, pid, st) {
+    var active = st.currentPlayer === pid;
+    circle(cx, cy, r, C.WIND_COLORS[pid], active ? C.GOLD_BRIGHT : null);
+    text(label, cx, cy + 1, 'center', 'middle',
+         'bold ' + Math.max(7, Math.round(r * 0.72)) + 'px "Microsoft YaHei"', '#fff');
   }
 
-  // ===== 弃牌区：每人面前一小块 =====
-  function _discards(st, top, th, sw, cx) {
-    var dw = Math.max(10, 14 * sc), dh = Math.max(14, 20 * sc), gap = Math.max(1, 1.5 * sc);
-    var cw = dw + gap, ch = dh + gap, maxPerRow = 7;
-    for (var p = 0; p < 4; p++) {
-      var disc = st.discards[p];
-      if (!disc || disc.length === 0) continue;
-      var show = Math.min(disc.length, maxPerRow * 3);
-      var rows = Math.ceil(show / maxPerRow);
-      var horiz = (p === 0 || p === 1);
-
-      // 每家弃牌区中心点：在桌面内、靠近自家一侧
-      var areaCx, areaCy;
-      if (p === 0) { areaCx = cx; areaCy = top + th - dh * rows - 12 * sc; }      // 底部玩家：桌面下方
-      else if (p === 1) { areaCx = cx; areaCy = top + 10 * sc; }                   // 顶部AI：桌面上方
-      else if (p === 2) { areaCx = sw + 10 * sc; areaCy = top + th * 0.55; }       // 左侧AI：桌面左侧
-      else { areaCx = W - sw - dw - 10 * sc; areaCy = top + th * 0.55; }           // 右侧AI：桌面右侧
-
-      for (var i = 0; i < show; i++) {
-        var row = Math.floor(i / maxPerRow), col = i % maxPerRow;
-        var rowCount = (row < rows - 1) ? maxPerRow : (show - row * maxPerRow);
-        var rowW = rowCount * cw;
-        var tx, ty;
-        if (horiz) {
-          tx = areaCx - rowW / 2 + col * cw;
-          ty = areaCy + row * ch;
-        } else {
-          tx = areaCx + row * ch;
-          ty = areaCy - rowW / 2 + col * cw;
-        }
-        tile(tx, ty, dw, dh, disc[i], true, false, false);
-      }
-    }
+  function drawScore (x, y, pid, st, align, fontSz) {
+    var active = st.currentPlayer === pid;
+    text((st.scores[pid] || 0) + '', x, y, align, 'middle',
+         (fontSz || 10) + 'px "Microsoft YaHei"', active ? C.GOLD : C.TEXT_DIM);
   }
 
-  // ===== 牌墙 =====
-  function _wall(st, cx, y) {
-    var rem = st.deck ? st.deck.length : 0;
-    var bw = Math.max(30, 60 * sc), bh = Math.max(3, 5 * sc);
-    var bx = cx - bw / 2;
-    ctx.fillStyle = 'rgba(0,0,0,0.3)'; rr(bx, y, bw, bh, bh / 2); ctx.fill();
-    var ratio = rem / 112;
-    ctx.fillStyle = ratio > 0.3 ? '#2E7D32' : '#C43B2A';
-    rr(bx, y, bw * ratio, bh, bh / 2); ctx.fill();
-    ctx.fillStyle = C.TEXT_DIM; ctx.font = Math.max(6, 7 * sc) + 'px "Microsoft YaHei"';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    ctx.fillText('余' + rem, cx, y + bh + 1 * sc);
-  }
-
-  // ===== 顶部AI（北） =====
-  function _topAI(st, topH, cx) {
-    var p = 1, count = st.hands[p] ? st.hands[p].length : 0;
-    var r = Math.max(6, 10 * sc);
-    var avX = cx, avY = topH / 2;
-    circle(avX, avY, r, C.WIND_COLORS[p], st.currentPlayer === p ? C.GOLD : null);
-    ctx.fillStyle = '#fff'; ctx.font = 'bold ' + Math.max(6, r * 0.7) + 'px "Microsoft YaHei"';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('北', avX, avY + 1);
-    // 分数
-    ctx.fillStyle = st.currentPlayer === p ? C.GOLD : C.TEXT_DIM;
-    ctx.font = Math.max(6, 7 * sc) + 'px "Microsoft YaHei"';
-    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-    ctx.fillText('AI ' + (st.scores[p] || 0), avX + r + 3 * sc, avY);
-    // 牌背
-    var tw = Math.max(6, 12 * sc), th = Math.max(8, 16 * sc);
-    var step = Math.min(tw + 1, W * 0.4 / Math.max(count, 1));
-    for (var i = 0; i < count; i++) tile(avX + r + 16 * sc + i * step, avY - th / 2, tw, th, 0, false, false, false);
-    // 副露
-    _melds(st, p, 4 * sc, topH - 26 * sc);
-  }
-
-  // ===== 左右AI =====
-  function _sideAI(st, pid, x, topY, sw, th, isR) {
-    var count = st.hands[pid] ? st.hands[pid].length : 0;
-    var r = Math.max(5, 8 * sc);
-    var avX = x + sw / 2, avY = topY + r + 3 * sc;
-    circle(avX, avY, r, C.WIND_COLORS[pid], st.currentPlayer === pid ? C.GOLD : null);
-    ctx.fillStyle = '#fff'; ctx.font = 'bold ' + Math.max(5, r * 0.65) + 'px "Microsoft YaHei"';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(['西', '东'][pid - 2], avX, avY + 1);
-    ctx.fillStyle = st.currentPlayer === pid ? C.GOLD : C.TEXT_DIM;
-    ctx.font = Math.max(5, 6 * sc) + 'px "Microsoft YaHei"';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    ctx.fillText(['AI', 'AI'][pid - 2] + ' ' + (st.scores[pid] || 0), avX, avY + r + 1 * sc);
-    // 牌背紧贴头像下方
-    var tw = Math.max(5, 10 * sc), tth = Math.max(7, 14 * sc);
-    var tileX = avX - tw / 2, startY = avY + r + 8 * sc;
-    var step = Math.min(tth + 1, 2.5 * sc);
-    for (var i = 0; i < count; i++) tile(tileX, startY + i * step, tw, tth, 0, false, false, false);
-    // 副露
-    _melds(st, pid, isR ? x + 2 * sc : x + sw - 3 * tw - 4 * sc, startY + count * step + 2 * sc);
-  }
-
-  // ===== 底部玩家（南） =====
-  function _bottom(st, bottomH, cx) {
-    var hand = st.hands[0] || [];
-    st.hands[0] = Tiles.sortHand(hand);
-    if (st.selectedIdx >= st.hands[0].length) st.selectedIdx = -1;
-    hand = st.hands[0];
-
-    var top = H - bottomH;
-    var barH = Math.max(20, 26 * sc), r = Math.max(6, 9 * sc);
-    var avX = 10 * sc, avY = top + barH / 2;
-    circle(avX, avY, r, C.WIND_COLORS[0], st.currentPlayer === 0 ? C.GOLD : null);
-    ctx.fillStyle = '#fff'; ctx.font = 'bold ' + Math.max(6, r * 0.7) + 'px "Microsoft YaHei"';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('你', avX, avY + 1);
-    ctx.fillStyle = C.TEXT; ctx.font = 'bold ' + Math.max(7, 9 * sc) + 'px "Microsoft YaHei"';
-    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-    ctx.fillText('南 ' + (st.scores[0] || 0) + '分', avX + r + 3 * sc, avY);
-
-    // 副露
-    _melds(st, 0, avX + r + 3 * sc, avY + 9 * sc);
-
-    // 手牌
-    var n = hand.length;
-    if (n === 0) return;
-    var mTw = Math.max(20, 36 * sc), mTh = Math.max(28, 48 * sc);
-    var padX = 2 * sc, availW = W - padX * 2;
-    var pitch, tileW, tileH;
-    var total = mTw * n + (n - 1) * 2;
-    if (total <= availW) { tileW = mTw; tileH = mTh; pitch = (availW - tileW) / Math.max(n - 1, 1); }
-    else { pitch = Math.max(16 * sc, (availW - mTw) / Math.max(n - 1, 1)); tileW = Math.min(mTw, pitch + mTw * 0.08); tileH = tileW * (mTh / mTw); }
-    var totalW = (n - 1) * pitch + tileW;
-    var hsx = padX + (availW - totalW) / 2;
-    var handY = top + barH + 2 * sc;
-
-    st._playerTilePositions = [];
-    var ni = n - 1;
-    for (var i = 0; i < n; i++) {
-      var xx = hsx + i * pitch;
-      var isNew = (st.turnPhase === 'draw' || st.turnPhase === 'discard') && i === ni;
-      var sel = st.selectedIdx === i;
-      var yOff = sel ? Math.max(6, 10 * sc) : (isNew ? Math.max(3, 5 * sc) : 0);
-      tile(xx, handY - yOff, tileW, tileH, hand[i], true, sel, isNew && !sel);
-      st._playerTilePositions.push({ x: xx, y: handY - yOff, w: tileW, h: tileH, idx: i });
-    }
-
-    if (st.turnPhase === 'discard' && st.phase === 'playerTurn') {
-      ctx.fillStyle = 'rgba(255,215,0,0.35)'; ctx.font = Math.max(6, 7 * sc) + 'px "Microsoft YaHei"';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-      ctx.fillText('点牌→选中→再点打出', cx, handY + tileH + 1 * sc);
-    }
-  }
-
-  // ===== 副露 =====
-  function _melds(st, pid, sx, sy) {
-    var melds = st.melds[pid];
+  /* ================================================================
+   *  绘制辅助：副露
+   * ================================================================ */
+  function drawMelds (melds, x, y, isHorizontal, faceUpOverride) {
     if (!melds || melds.length === 0) return;
-    var mw = Math.max(12, 18 * sc), mh = Math.max(16, 24 * sc);
-    var ox = 0;
+    var mw = TW_MELD, mh = TH_MELD, gap = 2;
+    var offset = 0;
     for (var m = 0; m < melds.length; m++) {
       var meld = melds[m];
       var tc = meld.type === 'gang' ? 4 : 3;
       for (var i = 0; i < tc; i++) {
-        var faceUp = !(meld.type === 'angang' || meld.type === 'mangang') || pid === 0;
-        tile(sx + ox + i * (mw + 1), sy, mw, mh, meld.tiles[i], faceUp, false, false);
-      }
-      ox += tc * (mw + 1) + 3 * sc;
-    }
-  }
-
-  // ===== 回合指示 =====
-  function _indicator(st, topH, sw, th, bh, cx) {
-    if (st.phase !== 'playerTurn' && st.phase !== 'aiTurn') return;
-    var pos = { 0: [cx, H - bh - 4 * sc], 1: [cx, topH + 8 * sc], 2: [sw + 8 * sc, topH + th / 2], 3: [W - sw - 8 * sc, topH + th / 2] };
-    var p = pos[st.currentPlayer] || pos[0];
-    ctx.save();
-    ctx.fillStyle = 'rgba(255,215,0,0.2)'; ctx.beginPath(); ctx.arc(p[0], p[1], 10 * sc, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#FFD700'; ctx.beginPath(); ctx.arc(p[0], p[1], 6 * sc, 0, Math.PI * 2); ctx.fill();
-    ctx.restore();
-  }
-
-  // =====================================================================
-  //  竖屏专用渲染函数
-  // =====================================================================
-
-  function _tablePortrait(top, th, sw, cx) {
-    var tw = W - sw * 2 - 4;
-    if (tw <= 0 || th <= 0) return;
-    ctx.save();
-    ctx.shadowColor = 'rgba(0,0,0,0.3)'; ctx.shadowBlur = 4;
-    rr(sw + 2, top, tw, th, 4);
-    var g = ctx.createRadialGradient(cx, top + th / 2, 2, cx, top + th / 2, tw * 0.45);
-    g.addColorStop(0, C.TABLE_LIGHT); g.addColorStop(0.5, C.TABLE_PRIMARY); g.addColorStop(1, C.TABLE_EDGE);
-    ctx.fillStyle = g; ctx.fill();
-    ctx.restore();
-    ctx.strokeStyle = 'rgba(0,0,0,0.12)'; ctx.lineWidth = 1;
-    rr(sw + 2, top, tw, th, 4); ctx.stroke();
-    // 中心标记
-    circle(cx, top + th / 2, 8, C.TABLE_FRAME, 'rgba(212,165,69,0.3)');
-    ctx.fillStyle = C.GOLD; ctx.font = 'bold 8px "Microsoft YaHei"'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('南', cx, top + th / 2);
-  }
-
-  function _discardsPortrait(st, tableTop, tableH, sideW, cx) {
-    var dw = Math.max(10, 13 * sc), dh = Math.max(14, 18 * sc), gap = Math.max(1, 1.5 * sc);
-    var cw = dw + gap, ch = dh + gap, maxPerRow = 7;
-    for (var p = 0; p < 4; p++) {
-      var disc = st.discards[p];
-      if (!disc || disc.length === 0) continue;
-      var show = Math.min(disc.length, maxPerRow * 2);
-      var rows = Math.ceil(show / maxPerRow);
-      var horiz = (p === 0 || p === 1);
-      var areaCx, areaCy;
-      if (p === 0) { areaCx = cx; areaCy = tableTop + tableH - dh * rows - 8; }
-      else if (p === 1) { areaCx = cx; areaCy = tableTop + 8; }
-      else if (p === 2) { areaCx = sideW + 8; areaCy = tableTop + tableH * 0.5; }
-      else { areaCx = W - sideW - dw - 8; areaCy = tableTop + tableH * 0.5; }
-      for (var i = 0; i < show; i++) {
-        var row = Math.floor(i / maxPerRow), col = i % maxPerRow;
-        var rowCount = (row < rows - 1) ? maxPerRow : (show - row * maxPerRow);
-        var rowW = rowCount * cw;
         var tx, ty;
-        if (horiz) { tx = areaCx - rowW / 2 + col * cw; ty = areaCy + row * ch; }
-        else { tx = areaCx + row * ch; ty = areaCy - rowW / 2 + col * cw; }
-        tile(tx, ty, dw, dh, disc[i], true, false, false);
+        var faceUp = (typeof faceUpOverride === 'boolean')
+          ? faceUpOverride
+          : !(meld.type === 'angang');
+        if (isHorizontal) {
+          tx = x + offset + i * (mw + gap);
+          ty = y;
+        } else {
+          tx = x;
+          ty = y + offset + i * (mh + gap);
+        }
+        drawTile(tx, ty, mw, mh, meld.tiles[i], faceUp, false, false);
       }
+      offset += tc * ((isHorizontal ? mw : mh) + gap) + 4;
     }
   }
 
-  function _topAIPortrait(st, topH, cx) {
-    var p = 1, count = st.hands[p] ? st.hands[p].length : 0;
-    var r = Math.max(5, 8 * sc);
-    var avX = cx, avY = topH / 2;
-    circle(avX, avY, r, C.WIND_COLORS[p], st.currentPlayer === p ? C.GOLD : null);
-    ctx.fillStyle = '#fff'; ctx.font = 'bold ' + Math.max(5, r * 0.65) + 'px "Microsoft YaHei"'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('北', avX, avY + 1);
-    ctx.fillStyle = st.currentPlayer === p ? C.GOLD : C.TEXT_DIM; ctx.font = Math.max(5, 6 * sc) + 'px "Microsoft YaHei"'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-    ctx.fillText('AI ' + (st.scores[p] || 0), avX + r + 2 * sc, avY);
-    // 牌背
-    var tw = Math.max(5, 10 * sc), th = Math.max(7, 14 * sc);
-    var step = Math.min(tw + 1, W * 0.35 / Math.max(count, 1));
-    for (var i = 0; i < count; i++) tile(avX + r + 14 * sc + i * step, avY - th / 2, tw, th, 0, false, false, false);
-    _melds(st, p, 4 * sc, topH - 22 * sc);
+  /* ================================================================
+   *  主渲染入口
+   * ================================================================ */
+  function render () {
+    var st = window.state;
+    if (!st || !st.hands) return;
+    try { _renderCore(st); } catch (e) { console.error('render:', e); }
   }
 
-  function _sideAIPortrait(st, pid, x, topY, sw, th) {
-    var count = st.hands[pid] ? st.hands[pid].length : 0;
-    var r = Math.max(4, 7 * sc);
-    var avX = x + sw / 2, avY = topY + r + 3 * sc;
-    circle(avX, avY, r, C.WIND_COLORS[pid], st.currentPlayer === pid ? C.GOLD : null);
-    ctx.fillStyle = '#fff'; ctx.font = 'bold ' + Math.max(4, r * 0.6) + 'px "Microsoft YaHei"'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(['西', '东'][pid - 2], avX, avY + 1);
-    ctx.fillStyle = st.currentPlayer === pid ? C.GOLD : C.TEXT_DIM; ctx.font = Math.max(4, 5 * sc) + 'px "Microsoft YaHei"'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    ctx.fillText('AI', avX, avY + r + 1 * sc);
-    // 牌背
-    var tw = Math.max(4, 8 * sc), tth = Math.max(6, 11 * sc);
-    var step = Math.min(tth + 1, 2 * sc);
-    var tileX = avX - tw / 2, startY = avY + r + 6 * sc;
-    for (var i = 0; i < count; i++) tile(tileX, startY + i * step, tw, tth, 0, false, false, false);
-    _melds(st, pid, x + 2 * sc, startY + count * step + 2 * sc);
+  function _renderCore (st) {
+    /* 重算布局 */
+    if (_layoutDirty) { _calcLayout(); _layoutDirty = false; }
+
+    var T = L.table;
+
+    /* ---- 背景 ---- */
+    ctx.fillStyle = C.BG;
+    ctx.fillRect(0, 0, W, H);
+
+    /* ---- 桌面 ---- */
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.35)';
+    ctx.shadowBlur = 8;
+    rr(T.l, T.t, T.r - T.l, T.b - T.t, 6);
+    var g = ctx.createRadialGradient(T.cx, T.cy, 4, T.cx, T.cy, (T.r - T.l) * 0.52);
+    g.addColorStop(0, C.TABLE_LIGHT);
+    g.addColorStop(0.5, C.TABLE_PRIMARY);
+    g.addColorStop(1, C.TABLE_EDGE);
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.restore();
+    ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+    ctx.lineWidth = 1;
+    rr(T.l, T.t, T.r - T.l, T.b - T.t, 6);
+    ctx.stroke();
+
+    /* ---- 桌面中心标记 ---- */
+    circle(T.cx, T.cy, 10, C.TABLE_FRAME, 'rgba(212,165,69,0.3)');
+    text('南', T.cx, T.cy + 1, 'center', 'middle', 'bold 9px "Microsoft YaHei"', C.GOLD);
+
+    /* ---- 牌墙余数 ---- */
+    var rem = st.deck ? st.deck.length : 0;
+    var bw = 56, bh = 5;
+    var bx = T.cx - bw / 2;
+    var by = T.cy + 18;
+    fillRR(bx, by, bw, bh, bh / 2, 'rgba(0,0,0,0.3)');
+    var ratio = rem / 112;
+    fillRR(bx, by, bw * ratio, bh, bh / 2, ratio > 0.3 ? C.GREEN_BRIGHT : C.RED);
+    text('余' + rem, T.cx, by + bh + 2, 'center', 'top', '9px "Microsoft YaHei"', C.TEXT_DIM);
+
+    /* ---- 四家 ---- */
+    _drawTop(st);
+    _drawLeft(st);
+    _drawRight(st);
+    _drawBottom(st);
+
+    /* ---- 弃牌 ---- */
+    for (var p = 0; p < 4; p++) _drawDiscard(st, p);
+
+    /* ---- 回合指示 ---- */
+    if (st.phase === 'playerTurn' || st.phase === 'aiTurn') {
+      var indicPos = {
+        0: [T.cx, L.playerBar.y - 6],
+        1: [L.top.cx, L.top.cy + 26],
+        2: [L.left.cx + 16, L.left.cy],
+        3: [L.right.cx - 16, L.right.cy]
+      };
+      var ip = indicPos[st.currentPlayer] || indicPos[0];
+      ctx.save();
+      ctx.fillStyle = 'rgba(255,215,0,0.22)';
+      ctx.beginPath(); ctx.arc(ip[0], ip[1], 9, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = C.GOLD_BRIGHT;
+      ctx.beginPath(); ctx.arc(ip[0], ip[1], 5, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
   }
 
-  function _bottomPortrait(st, tableBot, btnTop, cx) {
-    var hand = st.hands[0] || [];
-    st.hands[0] = Tiles.sortHand(hand);
-    if (st.selectedIdx >= st.hands[0].length) st.selectedIdx = -1;
-    hand = st.hands[0];
+  /* ================================================================
+   *  北家（上）
+   * ================================================================ */
+  function _drawTop (st) {
+    var pid = 1;
+    var hand = st.hands[pid] || [];
+    var L2 = L.top;
+    drawWindCircle(L2.cx - 30, L2.cy, 11, '北', pid, st);
+    drawScore(L2.cx - 14, L2.cy, pid, st, 'left', 10);
+    /* 牌背 */
+    var count = hand.length;
+    var stepX = Math.min(L2.tw + 1.5, W * 0.36 / Math.max(count, 1));
+    var startX = L2.cx;
+    for (var i = 0; i < count; i++) {
+      drawTile(startX + i * stepX, L2.cy - L2.th / 2, L2.tw, L2.th, 0, false, false, false);
+    }
+    /* 副露 */
+    drawMelds(st.melds[pid], 4, L2.cy + 16, true);
+  }
 
-    var barH = Math.max(18, 22 * sc), r = Math.max(6, 8 * sc);
-    var avX = 8 * sc, avY = tableBot + barH / 2;
-    circle(avX, avY, r, C.WIND_COLORS[0], st.currentPlayer === 0 ? C.GOLD : null);
-    ctx.fillStyle = '#fff'; ctx.font = 'bold ' + Math.max(5, r * 0.65) + 'px "Microsoft YaHei"'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('你', avX, avY + 1);
-    ctx.fillStyle = C.TEXT; ctx.font = 'bold ' + Math.max(6, 8 * sc) + 'px "Microsoft YaHei"'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-    ctx.fillText('南 ' + (st.scores[0] || 0) + '分', avX + r + 2 * sc, avY);
+  /* ================================================================
+   *  西家（左）
+   * ================================================================ */
+  function _drawLeft (st) {
+    var pid = 2;
+    var hand = st.hands[pid] || [];
+    var L2 = L.left;
+    drawWindCircle(L2.cx, L2.cy - 18, 9, '西', pid, st);
+    drawScore(L2.cx, L2.cy - 5, pid, st, 'center', 9);
+    /* 牌背垂直 */
+    var count = hand.length;
+    var stepY = Math.min(L2.th + 1.5, 3);
+    var startY = L2.cy + 4;
+    for (var i = 0; i < count; i++) {
+      drawTile(L2.cx - L2.tw / 2, startY + i * stepY, L2.tw, L2.th, 0, false, false, false);
+    }
+    /* 副露 */
+    drawMelds(st.melds[pid], L2.cx - TW_MELD / 2, startY + count * stepY + 4, true);
+  }
 
-    // 副露
-    _melds(st, 0, avX + r + 2 * sc, avY + 7 * sc);
+  /* ================================================================
+   *  东家（右）
+   * ================================================================ */
+  function _drawRight (st) {
+    var pid = 3;
+    var hand = st.hands[pid] || [];
+    var L2 = L.right;
+    drawWindCircle(L2.cx, L2.cy - 18, 9, '东', pid, st);
+    drawScore(L2.cx, L2.cy - 5, pid, st, 'center', 9);
+    var count = hand.length;
+    var stepY = Math.min(L2.th + 1.5, 3);
+    var startY = L2.cy + 4;
+    for (var i = 0; i < count; i++) {
+      drawTile(L2.cx - L2.tw / 2, startY + i * stepY, L2.tw, L2.th, 0, false, false, false);
+    }
+    drawMelds(st.melds[pid], L2.cx - TW_MELD / 2, startY + count * stepY + 4, true);
+  }
 
-    // 手牌
+  /* ================================================================
+   *  南家（玩家）— 底部
+   * ================================================================ */
+  function _drawBottom (st) {
+    var pid = 0;
+    var bar = L.playerBar;
+    var hnd = L.playerHand;
+
+    /* 信息条 */
+    drawWindCircle(14, bar.y + bar.h / 2, 10, '你', pid, st);
+    drawScore(30, bar.y + bar.h / 2, pid, st, 'left', 11);
+    /* 副露在信息条右侧 */
+    drawMelds(st.melds[pid], 52, bar.y + 1, true);
+
+    /* ---- 手牌 ---- */
+    var hand = Tiles.sortHand(st.hands[pid] || []);
+    st.hands[pid] = hand;
+    if (st.selectedIdx >= hand.length) st.selectedIdx = -1;
+
     var n = hand.length;
-    if (n === 0) return;
-    var mTw = Math.max(24, 34 * sc), mTh = Math.max(32, 46 * sc);
-    var padX = 2 * sc, availW = W - padX * 2;
-    var pitch, tileW, tileH;
-    var total = mTw * n + (n - 1) * 2;
-    if (total <= availW) { tileW = mTw; tileH = mTh; pitch = (availW - tileW) / Math.max(n - 1, 1); }
-    else { pitch = Math.max(18 * sc, (availW - mTw) / Math.max(n - 1, 1)); tileW = Math.min(mTw, pitch + mTw * 0.08); tileH = tileW * (mTh / mTw); }
-    var totalW = (n - 1) * pitch + tileW;
-    var hsx = padX + (availW - totalW) / 2;
-    var handY = tableBot + barH + 2 * sc;
+    if (n === 0) { st._playerTilePositions = []; return; }
+
+    var tw0 = hnd.baseW, th0 = hnd.baseH;
+    var padX = 2;
+    var availW = W - padX * 2;
+
+    /* 自动缩小：若放不下则按比例缩 */
+    var pitch, tw, th;
+    var idealW = tw0 * n + (n - 1) * 2;
+    if (idealW <= availW) {
+      tw = tw0; th = th0;
+      pitch = n > 1 ? (availW - tw) / (n - 1) : 0;
+    } else {
+      pitch = Math.max(tw0 * 0.45, (availW - tw0) / (n - 1));
+      tw = Math.min(tw0, pitch + tw0 * 0.08);
+      th = tw * (th0 / tw0);
+    }
+
+    var totalW = (n - 1) * pitch + tw;
+    var sx = padX + (availW - totalW) / 2;
+    var handY = hnd.y;
 
     st._playerTilePositions = [];
     var ni = n - 1;
+
     for (var i = 0; i < n; i++) {
-      var xx = hsx + i * pitch;
+      var xx = sx + i * pitch;
       var isNew = (st.turnPhase === 'draw' || st.turnPhase === 'discard') && i === ni;
-      var sel = st.selectedIdx === i;
-      var yOff = sel ? Math.max(5, 8 * sc) : (isNew ? Math.max(2, 4 * sc) : 0);
-      tile(xx, handY - yOff, tileW, tileH, hand[i], true, sel, isNew && !sel);
-      st._playerTilePositions.push({ x: xx, y: handY - yOff, w: tileW, h: tileH, idx: i });
-    }
+      var sel   = st.selectedIdx === i;
+      var yOff  = sel ? Math.max(5, th * 0.14) : (isNew ? Math.max(2, th * 0.06) : 0);
 
-    if (st.turnPhase === 'discard' && st.phase === 'playerTurn') {
-      ctx.fillStyle = 'rgba(255,215,0,0.35)'; ctx.font = Math.max(5, 6 * sc) + 'px "Microsoft YaHei"'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-      ctx.fillText('点牌→选中→再点打出', cx, handY + tileH + 1 * sc);
+      drawTile(xx, handY - yOff, tw, th, hand[i], true, sel, isNew && !sel);
+
+      st._playerTilePositions.push({
+        x: xx,
+        y: handY - yOff,
+        w: tw,
+        h: th + yOff,
+        idx: i
+      });
     }
   }
 
-  function _indicatorPortrait(st, tableTop, tableH, sideW, cx) {
-    if (st.phase !== 'playerTurn' && st.phase !== 'aiTurn') return;
-    var pos = { 0: [cx, tableTop + tableH + 8], 1: [cx, tableTop + 8], 2: [sideW + 8, tableTop + tableH / 2], 3: [W - sideW - 8, tableTop + tableH / 2] };
-    var p = pos[st.currentPlayer] || pos[0];
-    ctx.save();
-    ctx.fillStyle = 'rgba(255,215,0,0.2)'; ctx.beginPath(); ctx.arc(p[0], p[1], 8, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#FFD700'; ctx.beginPath(); ctx.arc(p[0], p[1], 5, 0, Math.PI * 2); ctx.fill();
-    ctx.restore();
+  /* ================================================================
+   *  弃牌区
+   * ================================================================ */
+  function _drawDiscard (st, pid) {
+    var disc = st.discards[pid];
+    if (!disc || disc.length === 0) return;
+
+    var area = L.discard[pid];
+    var dw = area.tw, dh = area.th;
+    var gap = 1.5;
+    var pitchX = dw + gap;
+    var pitchY = dh + gap;
+    var cols = area.cols;
+    var show = disc.length;
+
+    for (var i = 0; i < show; i++) {
+      var row = Math.floor(i / cols);
+      var col = i % cols;
+      var tx = area.x + col * pitchX;
+      var ty = area.y + row * pitchY;
+      drawTile(tx, ty, dw, dh, disc[i], true, false, false);
+    }
   }
 
-  return { canvas: canvas, ctx: ctx, resize: resize, render: render };
+  /* ================================================================
+   *  导出
+   * ================================================================ */
+  resize();
+
+  return {
+    canvas: canvas,
+    ctx:    ctx,
+    resize: resize,
+    render: render
+  };
 })();

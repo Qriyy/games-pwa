@@ -1,25 +1,34 @@
 /**
- * 红中麻将 AI 模块（重写版）
- * 全部使用贪心估算，零深度递归，手机端也能瞬间响应
+ * 红中麻将 AI 模块 v2（重写版）
  *
- * 牌面编码：
- *   万=0x10+rank  条=0x20+rank  筒=0x30+rank
- *   红中=0x41 (万能牌/癞子)
+ * 牌面编码：万=0x11-0x19, 条=0x21-0x29, 筒=0x31-0x39, 红中=0x41
+ * 红中为万能牌（癞子），永远不主动打出。
+ *
+ * difficulty: 'easy' | 'medium' | 'hard'
+ *
+ * 策略层次：
+ *   easy   → 孤张→边张→随机，偶尔犯错
+ *   medium → 牌价值评估，打最低价值牌
+ *   hard   → 向听数 + 进张数(ukeire)联合优化
  */
+
+;(function (root) {
+'use strict';
 
 // ============================================================
 //  常量
 // ============================================================
 
-const SUIT_WAN  = 0x10;
-const SUIT_TIAO = 0x20;
-const SUIT_TONG = 0x30;
-const SUIT_ZI   = 0x40;
-const HONG_ZHONG = 0x41;
+var SUIT_WAN   = 0x10;
+var SUIT_TIAO  = 0x20;
+var SUIT_TONG  = 0x30;
+var SUIT_ZI    = 0x40;
+var HONG_ZHONG = 0x41;
 
-const ALL_SUITS = [SUIT_WAN, SUIT_TIAO, SUIT_TONG];
+var ALL_SUITS  = [SUIT_WAN, SUIT_TIAO, SUIT_TONG];
+var ALL_RANKS  = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 
-const TILE_NAMES = {
+var TILE_NAMES = {
   0x11:'一万',0x12:'二万',0x13:'三万',0x14:'四万',0x15:'五万',
   0x16:'六万',0x17:'七万',0x18:'八万',0x19:'九万',
   0x21:'一条',0x22:'二条',0x23:'三条',0x24:'四条',0x25:'五条',
@@ -28,6 +37,14 @@ const TILE_NAMES = {
   0x36:'六筒',0x37:'七筒',0x38:'八筒',0x39:'九筒',
   0x41:'红中'
 };
+
+// 所有合法数牌 tile 值（用于迭代）
+var ALL_TILES = [];
+for (var _si = 0; _si < ALL_SUITS.length; _si++) {
+  for (var _ri = 1; _ri <= 9; _ri++) {
+    ALL_TILES.push(ALL_SUITS[_si] + _ri);
+  }
+}
 
 // ============================================================
 //  工具函数
@@ -47,24 +64,23 @@ function isNumberTile(tile) {
   return s === SUIT_WAN || s === SUIT_TIAO || s === SUIT_TONG;
 }
 
+/** 手牌转计数表 {tileValue: count} */
 function handToCounts(hand) {
   var counts = {};
   for (var i = 0; i < hand.length; i++) {
-    var t = hand[i];
-    counts[t] = (counts[t] || 0) + 1;
+    counts[hand[i]] = (counts[hand[i]] || 0) + 1;
   }
   return counts;
 }
 
 function sortHand(hand) {
-  return hand.slice().sort(function(a, b) { return a - b; });
+  return hand.slice().sort(function (a, b) { return a - b; });
 }
 
 function removeTile(hand, tile) {
-  var idx = hand.indexOf(tile);
-  if (idx === -1) return hand.slice();
   var copy = hand.slice();
-  copy.splice(idx, 1);
+  var idx = copy.indexOf(tile);
+  if (idx !== -1) copy.splice(idx, 1);
   return copy;
 }
 
@@ -93,7 +109,7 @@ function nonHongZhong(hand) {
   return result;
 }
 
-/** 获取手牌中所有可以打出的非红中牌（去重） */
+/** 获取手牌中可打出的非红中牌（去重） */
 function getPlayableTiles(hand) {
   var seen = {};
   var result = [];
@@ -105,144 +121,153 @@ function getPlayableTiles(hand) {
   return result;
 }
 
+/** 深拷贝一个 counts 对象 */
+function cloneCounts(counts) {
+  var c = {};
+  for (var k in counts) { if (counts.hasOwnProperty(k)) c[k] = counts[k]; }
+  return c;
+}
+
 // ============================================================
-//  胡牌检测（递归但有深度限制，仅用于最终判定）
+//  胡牌检测（递归 + 深度限制）
 // ============================================================
 
+/**
+ * 检查手牌（含红中）是否能胡。
+ * hand: 数组，长度应为 14 - 已暴露面子数×3
+ * exposedMeldCount: 已暴露的面子(碰/杠)数量
+ */
 function canWin(hand, exposedMeldCount) {
   if (exposedMeldCount === undefined) exposedMeldCount = 0;
-  if (hand.length + exposedMeldCount * 3 !== 14) return false;
+  var total = hand.length + exposedMeldCount * 3;
+  if (total !== 14) return false;
 
   var hzCount = countHongZhong(hand);
   var tiles = nonHongZhong(hand);
   var counts = handToCounts(tiles);
   var meldsNeeded = 4 - exposedMeldCount;
+  var uniqueTiles = [];
+  for (var k in counts) { if (counts.hasOwnProperty(k)) uniqueTiles.push(Number(k)); }
 
-  var uniqueTiles = Object.keys(counts).map(Number);
-
-  // 情况1：将由两张普通牌组成
+  // 将 = 两张普通牌
   for (var idx = 0; idx < uniqueTiles.length; idx++) {
     var pairTile = uniqueTiles[idx];
     if (counts[pairTile] >= 2) {
-      var nc = {};
-      for (var k in counts) nc[k] = counts[k];
+      var nc = cloneCounts(counts);
       nc[pairTile] -= 2;
       if (nc[pairTile] === 0) delete nc[pairTile];
-      if (canFormMelds(nc, meldsNeeded, hzCount)) return true;
+      if (_canFormMelds(nc, meldsNeeded, hzCount, 0)) return true;
     }
   }
-
-  // 情况2：将由1张普通牌+1张红中组成
+  // 将 = 1普通 + 1红中
   if (hzCount >= 1) {
     for (var idx2 = 0; idx2 < uniqueTiles.length; idx2++) {
       var pt2 = uniqueTiles[idx2];
-      var nc2 = {};
-      for (var k2 in counts) nc2[k2] = counts[k2];
+      var nc2 = cloneCounts(counts);
       nc2[pt2] -= 1;
       if (nc2[pt2] === 0) delete nc2[pt2];
-      if (canFormMelds(nc2, meldsNeeded, hzCount - 1)) return true;
+      if (_canFormMelds(nc2, meldsNeeded, hzCount - 1, 0)) return true;
     }
   }
-
-  // 情况3：将由2张红中组成
+  // 将 = 2红中
   if (hzCount >= 2) {
-    var nc3 = {};
-    for (var k3 in counts) nc3[k3] = counts[k3];
-    if (canFormMelds(nc3, meldsNeeded, hzCount - 2)) return true;
+    if (_canFormMelds(cloneCounts(counts), meldsNeeded, hzCount - 2, 0)) return true;
   }
-
   return false;
 }
 
-/** 递归检测能否组成指定数量的面子（有深度限制） */
-function canFormMelds(counts, meldsNeeded, wilds, depth) {
-  if (depth === undefined) depth = 0;
-  if (depth > 30) return false; // 安全限制
+/** 递归检测能否组成 meldsNeeded 个面子 */
+function _canFormMelds(counts, meldsNeeded, wilds, depth) {
+  if (depth > 40) return false;
   if (meldsNeeded === 0 && wilds === 0) return true;
   if (meldsNeeded === 0) return wilds % 3 === 0;
 
   var totalTiles = 0;
-  for (var tk in counts) totalTiles += counts[tk];
+  for (var tk in counts) { if (counts.hasOwnProperty(tk)) totalTiles += counts[tk]; }
   if (totalTiles + wilds < meldsNeeded * 3) return false;
 
-  var tileKeys = Object.keys(counts).map(Number).sort(function(a,b){ return a - b; });
+  var tileKeys = [];
+  for (var kk in counts) { if (counts.hasOwnProperty(kk)) tileKeys.push(Number(kk)); }
+  tileKeys.sort(function (a, b) { return a - b; });
+
   if (tileKeys.length === 0) return wilds >= meldsNeeded * 3;
 
   var firstTile = tileKeys[0];
   var cnt = counts[firstTile];
 
-  // 刻子：3张相同
+  // --- 刻子 ---
   if (cnt >= 3) {
-    var nc = {}; for (var k in counts) nc[k] = counts[k];
+    var nc = cloneCounts(counts);
     nc[firstTile] -= 3;
     if (nc[firstTile] === 0) delete nc[firstTile];
-    if (canFormMelds(nc, meldsNeeded - 1, wilds, depth + 1)) return true;
+    if (_canFormMelds(nc, meldsNeeded - 1, wilds, depth + 1)) return true;
   }
   if (cnt >= 2 && wilds >= 1) {
-    var nc2 = {}; for (var k2 in counts) nc2[k2] = counts[k2];
+    var nc2 = cloneCounts(counts);
     nc2[firstTile] -= 2;
     if (nc2[firstTile] === 0) delete nc2[firstTile];
-    if (canFormMelds(nc2, meldsNeeded - 1, wilds - 1, depth + 1)) return true;
+    if (_canFormMelds(nc2, meldsNeeded - 1, wilds - 1, depth + 1)) return true;
   }
   if (cnt >= 1 && wilds >= 2) {
-    var nc3 = {}; for (var k3 in counts) nc3[k3] = counts[k3];
+    var nc3 = cloneCounts(counts);
     nc3[firstTile] -= 1;
     if (nc3[firstTile] === 0) delete nc3[firstTile];
-    if (canFormMelds(nc3, meldsNeeded - 1, wilds - 2, depth + 1)) return true;
+    if (_canFormMelds(nc3, meldsNeeded - 1, wilds - 2, depth + 1)) return true;
   }
 
-  // 顺子：连续三张数牌
+  // --- 顺子（仅数牌） ---
   if (isNumberTile(firstTile)) {
     var s = suitOf(firstTile);
     var r = rankOf(firstTile);
     if (r <= 7) {
       var t2 = s + (r + 1), t3 = s + (r + 2);
-      if (counts[t2] > 0 && counts[t3] > 0) {
-        var ncs = {}; for (var ks in counts) ncs[ks] = counts[ks];
+      var c2 = counts[t2] || 0, c3 = counts[t3] || 0;
+      // 完整顺子
+      if (c2 > 0 && c3 > 0) {
+        var ncs = cloneCounts(counts);
         ncs[firstTile]--; if (ncs[firstTile] === 0) delete ncs[firstTile];
         ncs[t2]--; if (ncs[t2] === 0) delete ncs[t2];
         ncs[t3]--; if (ncs[t3] === 0) delete ncs[t3];
-        if (canFormMelds(ncs, meldsNeeded - 1, wilds, depth + 1)) return true;
+        if (_canFormMelds(ncs, meldsNeeded - 1, wilds, depth + 1)) return true;
       }
-      // 红中补缺
-      if (counts[t2] > 0 && wilds >= 1 && (!counts[t3] || counts[t3] === 0)) {
-        var nc4 = {}; for (var k4 in counts) nc4[k4] = counts[k4];
+      // 缺一张，红中补
+      if (c2 > 0 && wilds >= 1 && c3 === 0) {
+        var nc4 = cloneCounts(counts);
         nc4[firstTile]--; if (nc4[firstTile] === 0) delete nc4[firstTile];
         nc4[t2]--; if (nc4[t2] === 0) delete nc4[t2];
-        if (canFormMelds(nc4, meldsNeeded - 1, wilds - 1, depth + 1)) return true;
+        if (_canFormMelds(nc4, meldsNeeded - 1, wilds - 1, depth + 1)) return true;
       }
-      if (counts[t3] > 0 && wilds >= 1 && (!counts[t2] || counts[t2] === 0)) {
-        var nc5 = {}; for (var k5 in counts) nc5[k5] = counts[k5];
+      if (c3 > 0 && wilds >= 1 && c2 === 0) {
+        var nc5 = cloneCounts(counts);
         nc5[firstTile]--; if (nc5[firstTile] === 0) delete nc5[firstTile];
         nc5[t3]--; if (nc5[t3] === 0) delete nc5[t3];
-        if (canFormMelds(nc5, meldsNeeded - 1, wilds - 1, depth + 1)) return true;
+        if (_canFormMelds(nc5, meldsNeeded - 1, wilds - 1, depth + 1)) return true;
       }
-      if (wilds >= 2) {
-        var nc6 = {}; for (var k6 in counts) nc6[k6] = counts[k6];
+      // 只有首张，两红中补
+      if (wilds >= 2 && c2 === 0 && c3 === 0) {
+        var nc6 = cloneCounts(counts);
         nc6[firstTile]--; if (nc6[firstTile] === 0) delete nc6[firstTile];
-        if (canFormMelds(nc6, meldsNeeded - 1, wilds - 2, depth + 1)) return true;
+        if (_canFormMelds(nc6, meldsNeeded - 1, wilds - 2, depth + 1)) return true;
       }
     }
   }
 
-  // 3张红中做刻子
+  // --- 3红中做刻子 ---
   if (wilds >= 3) {
-    if (canFormMelds({ }, meldsNeeded - 1, wilds - 3, depth + 1)) return true;
-    // 重新构建空对象
-    var nc7 = {}; for (var k7 in counts) nc7[k7] = counts[k7];
-    if (canFormMelds(nc7, meldsNeeded - 1, wilds - 3, depth + 1)) return true;
+    if (_canFormMelds(cloneCounts(counts), meldsNeeded - 1, wilds - 3, depth + 1)) return true;
   }
 
   return false;
 }
 
 // ============================================================
-//  贪心向听数估算（零递归，瞬间完成）
+//  向听数计算（贪心估算，零深度递归）
 // ============================================================
 
 /**
- * 贪心估算向听数，完全无递归
+ * 贪心估算向听数。
  * -1 = 已胡, 0 = 听牌, 1+ = 还差
+ * 使用固定公式: shanten = 8 - 2×面子 - 搭子 - (有将?1:0)
  */
 function estimateShanten(hand) {
   if (hand.length === 0) return -1;
@@ -250,89 +275,113 @@ function estimateShanten(hand) {
   var hz = countHongZhong(hand);
   var tiles = nonHongZhong(hand);
   var counts = handToCounts(tiles);
+  var keys = [];
+  for (var k in counts) { if (counts.hasOwnProperty(k)) keys.push(Number(k)); }
 
-  // 贪心：先取刻子，再取顺子
+  // 全红中手牌
+  if (keys.length === 0) {
+    return Math.max(-1, 8 - 2 * Math.floor(hz / 3) - (hz % 3 >= 2 ? 1 : 0));
+  }
+
+  var used = {};  // 已分配到面子的牌数
   var melds = 0;
-  var used = {};
+  var partials = 0;
+  var hasPair = false;
 
-  // 第一轮：找刻子
-  var keys = Object.keys(counts).map(Number);
+  // ---- 第1轮: 刻子 ----
   for (var i = 0; i < keys.length; i++) {
-    var tile = keys[i];
-    while ((counts[tile] - (used[tile] || 0)) >= 3) {
-      used[tile] = (used[tile] || 0) + 3;
+    var t = keys[i];
+    var c = counts[t] - (used[t] || 0);
+    while (c >= 3 && melds + partials < 4) {
+      used[t] = (used[t] || 0) + 3;
       melds++;
+      c -= 3;
     }
   }
 
-  // 第二轮：找顺子
+  // ---- 第2轮: 顺子 ----
   for (var si = 0; si < ALL_SUITS.length; si++) {
     var s = ALL_SUITS[si];
     for (var r = 1; r <= 7; r++) {
-      var t1 = s + r, t2 = s + r + 1, t3 = s + r + 2;
-      var c1 = (counts[t1] || 0) - (used[t1] || 0);
-      var c2 = (counts[t2] || 0) - (used[t2] || 0);
-      var c3 = (counts[t3] || 0) - (used[t3] || 0);
-      while (c1 > 0 && c2 > 0 && c3 > 0) {
-        used[t1] = (used[t1] || 0) + 1;
-        used[t2] = (used[t2] || 0) + 1;
-        used[t3] = (used[t3] || 0) + 1;
+      var a = s + r, b = s + r + 1, c2 = s + r + 2;
+      var ca = (counts[a] || 0) - (used[a] || 0);
+      var cb = (counts[b] || 0) - (used[b] || 0);
+      var cc = (counts[c2] || 0) - (used[c2] || 0);
+      while (ca > 0 && cb > 0 && cc > 0 && melds + partials < 4) {
+        used[a] = (used[a] || 0) + 1;
+        used[b] = (used[b] || 0) + 1;
+        used[c2] = (used[c2] || 0) + 1;
         melds++;
-        c1--; c2--; c3--;
+        ca--; cb--; cc--;
       }
     }
   }
 
-  // 第三轮：红中补面子（1-2张牌 + 红中组成刻子/顺子）
+  // ---- 第3轮: 红中补面子 ----
   var hzLeft = hz;
-  // 补刻子：2张相同 + 1红中
+  // 2同牌 + 1红中 → 刻子
   for (var pi = 0; pi < keys.length && hzLeft > 0; pi++) {
     var pk = keys[pi];
     var rem = (counts[pk] || 0) - (used[pk] || 0);
-    if (rem >= 2) { used[pk] = (used[pk] || 0) + 2; hzLeft--; melds++; }
+    if (rem >= 2 && melds + partials < 4) {
+      used[pk] = (used[pk] || 0) + 2;
+      hzLeft--;
+      melds++;
+    }
   }
-  // 补顺子
+  // 2连/间隔数牌 + 1红中 → 顺子
   for (var si2 = 0; si2 < ALL_SUITS.length && hzLeft > 0; si2++) {
     var ss = ALL_SUITS[si2];
     for (var rr = 1; rr <= 7 && hzLeft > 0; rr++) {
-      var a = ss + rr, b = ss + rr + 1, c = ss + rr + 2;
-      var ca = (counts[a] || 0) - (used[a] || 0);
-      var cb = (counts[b] || 0) - (used[b] || 0);
-      var cc = (counts[c] || 0) - (used[c] || 0);
-      // 缺1张
-      if (ca > 0 && cb > 0 && cc === 0 && hzLeft > 0) {
-        used[a] = (used[a] || 0) + 1; used[b] = (used[b] || 0) + 1;
+      var ta = ss + rr, tb = ss + rr + 1, tc = ss + rr + 2;
+      var ra = (counts[ta] || 0) - (used[ta] || 0);
+      var rb = (counts[tb] || 0) - (used[tb] || 0);
+      var rc = (counts[tc] || 0) - (used[tc] || 0);
+      if (ra > 0 && rb > 0 && rc === 0) {
+        used[ta] = (used[ta] || 0) + 1; used[tb] = (used[tb] || 0) + 1;
         hzLeft--; melds++;
-      } else if (ca > 0 && cb === 0 && cc > 0 && hzLeft > 0) {
-        used[a] = (used[a] || 0) + 1; used[c] = (used[c] || 0) + 1;
+      } else if (ra > 0 && rb === 0 && rc > 0) {
+        used[ta] = (used[ta] || 0) + 1; used[tc] = (used[tc] || 0) + 1;
         hzLeft--; melds++;
-      } else if (ca === 0 && cb > 0 && cc > 0 && hzLeft > 0) {
-        used[b] = (used[b] || 0) + 1; used[c] = (used[c] || 0) + 1;
+      } else if (ra === 0 && rb > 0 && rc > 0) {
+        used[tb] = (used[tb] || 0) + 1; used[tc] = (used[tc] || 0) + 1;
         hzLeft--; melds++;
       }
     }
   }
+  // 1牌 + 2红中 → 顺子
+  for (var si3 = 0; si3 < ALL_SUITS.length && hzLeft >= 2; si3++) {
+    var s3 = ALL_SUITS[si3];
+    for (var rr3 = 1; rr3 <= 9 && hzLeft >= 2; rr3++) {
+      var tt = s3 + rr3;
+      var rt = (counts[tt] || 0) - (used[tt] || 0);
+      if (rt > 0 && melds + partials < 4) {
+        used[tt] = (used[tt] || 0) + 1;
+        hzLeft -= 2;
+        melds++;
+      }
+    }
+  }
+  // 3红中 → 刻子
+  while (hzLeft >= 3 && melds + partials < 4) {
+    hzLeft -= 3;
+    melds++;
+  }
 
-  // 找对子（优先级最高，因为需要1对才能胡）
-  var hasPair = false;
-  // 普通对子
+  // ---- 第4轮: 找对子 ----
   for (var hi = 0; hi < keys.length; hi++) {
     var ht = keys[hi];
     var hrem = (counts[ht] || 0) - (used[ht] || 0);
     if (hrem >= 2) { hasPair = true; break; }
   }
-  // 红中做对
   if (!hasPair && hzLeft >= 2) hasPair = true;
   if (!hasPair && hzLeft >= 1) {
-    // 1张剩余牌 + 1红中做对
     for (var gi = 0; gi < keys.length; gi++) {
-      var gt = keys[gi];
-      if ((counts[gt] || 0) - (used[gt] || 0) >= 1) { hasPair = true; break; }
+      if ((counts[keys[gi]] || 0) - (used[keys[gi]] || 0) >= 1) { hasPair = true; break; }
     }
   }
 
-  // 找搭子（两张相邻/隔一的数牌）
-  var partials = 0;
+  // ---- 第5轮: 找搭子 ----
   var usedForPartial = {};
   for (var pi2 = 0; pi2 < keys.length; pi2++) {
     var pt = keys[pi2];
@@ -340,8 +389,7 @@ function estimateShanten(hand) {
     var ps = suitOf(pt), pr = rankOf(pt);
     var pRem = (counts[pt] || 0) - (used[pt] || 0) - (usedForPartial[pt] || 0);
     if (pRem <= 0) continue;
-
-    // 相邻搭子 (r, r+1)
+    // 相邻搭子
     if (pr <= 8) {
       var next = ps + pr + 1;
       var nRem = (counts[next] || 0) - (used[next] || 0) - (usedForPartial[next] || 0);
@@ -352,7 +400,7 @@ function estimateShanten(hand) {
         continue;
       }
     }
-    // 隔一搭子 (r, r+2)
+    // 隔一搭子
     if (pr <= 7) {
       var skip = ps + pr + 2;
       var sRem = (counts[skip] || 0) - (used[skip] || 0) - (usedForPartial[skip] || 0);
@@ -363,10 +411,9 @@ function estimateShanten(hand) {
       }
     }
   }
-
-  // 红中做搭子
+  // 红中 + 1牌 → 搭子
   if (hzLeft >= 1 && melds + partials < 4) {
-    for (var wi = 0; wi < keys.length && hzLeft > 0 && melds + partials < 4; wi++) {
+    for (var wi = 0; wi < keys.length; wi++) {
       var wt = keys[wi];
       if (!isNumberTile(wt)) continue;
       var wRem = (counts[wt] || 0) - (used[wt] || 0) - (usedForPartial[wt] || 0);
@@ -378,65 +425,112 @@ function estimateShanten(hand) {
     }
   }
 
-  // 全红中特殊处理
-  if (tiles.length === 0) {
-    var extraMelds = Math.floor(hz / 3);
-    var remain = hz % 3;
-    return Math.max(-1, 8 - 2 * extraMelds - (remain >= 2 ? 1 : 0) - (remain === 1 ? 1 : 0));
-  }
-
   return Math.max(-1, 8 - 2 * melds - (hasPair ? 1 : 0) - partials);
 }
 
-// 保持原有 API 名称
 var calcShanten = estimateShanten;
 
 // ============================================================
-//  快速进张估算（仅检查手牌相关花色，不穷举全部 112 张）
+//  进张(ukeire)计算
 // ============================================================
 
-function countWaitsFast(hand) {
-  var waits = 0;
+/**
+ * 计算打出某张牌后，剩余手牌的进张数。
+ * 进张 = 还有哪些牌摸进来能减少向听数或接近胡牌。
+ * 为了性能，只在向听数<=2时精确计算，否则用快速估算。
+ */
+function countUkeire(hand) {
+  var currentShanten = estimateShanten(hand);
+  if (currentShanten <= -1) return 0;
+
   var hz = countHongZhong(hand);
   var tiles = nonHongZhong(hand);
   var counts = handToCounts(tiles);
+  var totalUkeire = 0;
   var checked = {};
+
+  // 检查所有数牌
+  for (var si = 0; si < ALL_SUITS.length; si++) {
+    var s = ALL_SUITS[si];
+    for (var r = 1; r <= 9; r++) {
+      var t = s + r;
+      if (checked[t]) continue;
+      checked[t] = true;
+      if ((counts[t] || 0) >= 4) continue; // 已经4张了
+      var newHand = hand.concat([t]);
+      var newShanten = estimateShanten(newHand);
+      if (newShanten < currentShanten) {
+        totalUkeire += 4 - (counts[t] || 0);
+      }
+    }
+  }
+
+  // 红中进张
+  if (hz < 4) {
+    var newHandHz = hand.concat([HONG_ZHONG]);
+    var newShHz = estimateShanten(newHandHz);
+    if (newShHz < currentShanten) {
+      totalUkeire += 4 - hz;
+    }
+  }
+
+  return totalUkeire;
+}
+
+/**
+ * 快速进张估算（不精确计算每张牌摸进来后的向听数，
+ * 而是基于手牌结构估算潜在有用的牌数）
+ */
+function countWaitsFast(hand) {
+  var hz = countHongZhong(hand);
+  var tiles = nonHongZhong(hand);
+  var counts = handToCounts(tiles);
+  var usefulSet = {};
 
   for (var i = 0; i < tiles.length; i++) {
     var tile = tiles[i];
-    if (checked[tile]) continue;
-    checked[tile] = true;
-
     var s = suitOf(tile), r = rankOf(tile);
 
-    // 检查相邻牌是否能让手牌进步
     if (isNumberTile(tile)) {
+      // 相邻 ±1, ±2 的牌都有可能有用
       for (var dr = -2; dr <= 2; dr++) {
         if (dr === 0) continue;
         var nr = r + dr;
         if (nr >= 1 && nr <= 9) {
           var nt = s + nr;
-          if (!checked[nt]) { checked[nt] = true; waits++; }
+          if ((counts[nt] || 0) < 4) usefulSet[nt] = true;
         }
       }
     }
-    // 同牌
-    if (counts[tile] < 4) waits++;
+    // 同牌（凑刻子/对子）
+    if ((counts[tile] || 0) < 4) usefulSet[tile] = true;
   }
 
-  // 红中也是有效进张
-  if (hz < 4) waits++;
+  var total = 0;
+  for (var uk in usefulSet) {
+    if (usefulSet.hasOwnProperty(uk)) {
+      total += 4 - (counts[Number(uk)] || 0);
+    }
+  }
+  // 红中也是有用进张
+  if (hz < 4) total += 4 - hz;
 
-  return waits;
+  return total;
 }
 
 // ============================================================
-//  评估单张牌的价值（用于 Medium / Hard AI）
+//  牌价值评估
 // ============================================================
 
 /**
- * 评估手牌中某张牌的价值。价值越高 = 越不想打出。
- * 不考虑红中（红中永远不打）。
+ * 评估 hand 中某张 tile 的价值。价值越高 = 越不想打出。
+ * 红中永远返回 9999（不打）。
+ *
+ * 评估维度：
+ *   - 对子/刻子贡献
+ *   - 顺子/搭子贡献
+ *   - 孤立度惩罚
+ *   - 位置偏移（中张>边张）
  */
 function tileValue(hand, tile) {
   if (tile === HONG_ZHONG) return 9999;
@@ -445,35 +539,59 @@ function tileValue(hand, tile) {
   var cnt = counts[tile] || 0;
   var value = 0;
 
-  // 对子/刻子价值
-  if (cnt >= 3) value += 8;
-  else if (cnt >= 2) value += 5;
+  // 重复张价值
+  if (cnt >= 3) value += 10;
+  else if (cnt >= 2) value += 6;
 
-  if (isNumberTile(tile)) {
-    var s = suitOf(tile);
-    var r = rankOf(tile);
+  if (!isNumberTile(tile)) return value;
 
-    // 相邻牌 +3 每个
-    if (r >= 2 && counts[s + (r - 1)]) value += 3;
-    if (r <= 8 && counts[s + (r + 1)]) value += 3;
+  var s = suitOf(tile);
+  var r = rankOf(tile);
 
-    // 顺子完成 +5（检查是否能和两边组成顺子）
-    // r-2, r-1, r
-    if (r >= 3 && counts[s + (r - 2)] && counts[s + (r - 1)]) value += 5;
-    // r-1, r, r+1
-    if (r >= 2 && r <= 8 && counts[s + (r - 1)] && counts[s + (r + 1)]) value += 5;
-    // r, r+1, r+2
-    if (r <= 7 && counts[s + (r + 1)] && counts[s + (r + 2)]) value += 5;
+  // 相邻牌 +4 每个（搭子贡献）
+  var adjL = (r >= 2) ? (counts[s + (r - 1)] || 0) : 0;
+  var adjR = (r <= 8) ? (counts[s + (r + 1)] || 0) : 0;
+  value += adjL * 4 + adjR * 4;
 
-    // 边张（1或9）价值稍低，更容易被打出
-    if (r === 1 || r === 9) value -= 1;
-  }
+  // 隔一张（卡张搭子）+2
+  if (r >= 3) value += (counts[s + (r - 2)] || 0) * 2;
+  if (r <= 7) value += (counts[s + (r + 2)] || 0) * 2;
+
+  // 完成顺子 +6
+  if (r >= 3 && counts[s + (r - 2)] && counts[s + (r - 1)]) value += 6;
+  if (r >= 2 && r <= 8 && counts[s + (r - 1)] && counts[s + (r + 1)]) value += 6;
+  if (r <= 7 && counts[s + (r + 1)] && counts[s + (r + 2)]) value += 6;
+
+  // 中张加成（3-7 比边张更有用）
+  if (r >= 3 && r <= 7) value += 1;
+  // 边张惩罚（1, 9 孤立时更易打出）
+  if ((r === 1 || r === 9) && cnt === 1 && adjL === 0 && adjR === 0) value -= 2;
 
   return value;
 }
 
+/**
+ * 综合评分：打掉 tile 后手牌的整体质量。
+ * 返回分数越高 = 打这张越好。
+ */
+function discardScore(hand, tile, difficulty) {
+  var remaining = removeTile(hand, tile);
+  var shanten = estimateShanten(remaining);
+
+  if (difficulty === 'hard') {
+    // hard 模式用精确 ukeire
+    var ukeire = countUkeire(remaining);
+    // 向听数低 + 进张多 = 好
+    return -shanten * 100 + ukeire;
+  }
+
+  // medium 模式用快速估算
+  var waits = countWaitsFast(remaining);
+  return -shanten * 80 + waits;
+}
+
 // ============================================================
-//  找孤张（Easy AI 专用）
+//  找孤张（Easy AI）
 // ============================================================
 
 function findIsolatedTiles(hand) {
@@ -493,12 +611,12 @@ function findIsolatedTiles(hand) {
     // 有对子或以上
     if (counts[tile] >= 2) related = true;
 
-    // 有相邻牌
+    // 有相邻/隔一牌
     if (!related && isNumberTile(tile)) {
       for (var dr = -2; dr <= 2; dr++) {
         if (dr === 0) continue;
         var nr = r + dr;
-        if (nr >= 1 && nr <= 9 && counts[s + nr] > 0) { related = true; break; }
+        if (nr >= 1 && nr <= 9 && (counts[s + nr] || 0) > 0) { related = true; break; }
       }
     }
 
@@ -508,7 +626,7 @@ function findIsolatedTiles(hand) {
 }
 
 // ============================================================
-//  找边张（rank 1 或 9 的非红中牌，Easy AI 备选）
+//  找边张（rank 1 或 9，Easy AI 备选）
 // ============================================================
 
 function findEdgeTiles(hand) {
@@ -528,77 +646,67 @@ function findEdgeTiles(hand) {
 }
 
 // ============================================================
-//  出牌候选评分（纯贪心，无递归）
-// ============================================================
-
-function evaluateDiscardFast(hand, candidate) {
-  var remaining = removeTile(hand, candidate);
-  var shanten = estimateShanten(remaining);
-  var waits = countWaitsFast(remaining);
-  var score = waits * 10 - shanten * 50;
-  if (candidate === HONG_ZHONG) score -= 80;
-  return score;
-}
-
-// ============================================================
-//  AI 出牌决策（核心函数，重写）
+//  AI 出牌决策（核心函数）
 // ============================================================
 
 /**
- * 返回要打出的牌的值（不是索引）。
- * 绝对不会返回 HONG_ZHONG (0x41)。
+ * getAIDecision(hand, difficulty) → 牌值(不是索引)
+ * 永远不返回红中(0x41)。
  */
 function getAIDecision(hand, difficulty) {
-  if (hand.length === 0) return null;
+  if (!hand || hand.length === 0) return null;
 
-  // 获取所有可打的牌（排除红中）
   var playable = getPlayableTiles(hand);
-  if (playable.length === 0) return null; // 只剩红中，无法出牌
+  if (playable.length === 0) return null;
 
-  // ---- Easy ----
+  // ========== Easy ==========
   if (difficulty === 'easy') {
-    // 第一优先：找孤张
+    // 30% 概率犯错：直接随机打
+    if (Math.random() < 0.3) {
+      return playable[Math.floor(Math.random() * playable.length)];
+    }
+    // 孤张
     var iso = findIsolatedTiles(hand);
     if (iso.length > 0) {
       return iso[Math.floor(Math.random() * iso.length)];
     }
-    // 第二优先：找边张（1或9）
+    // 边张
     var edges = findEdgeTiles(hand);
     if (edges.length > 0) {
       return edges[Math.floor(Math.random() * edges.length)];
     }
-    // 兜底：随机打一张非红中
+    // 随机
     return playable[Math.floor(Math.random() * playable.length)];
   }
 
-  // ---- Medium ----
+  // ========== Medium ==========
   if (difficulty === 'medium') {
     var bestTile = playable[0];
-    var bestValue = Infinity;
-
+    var bestVal = Infinity;
     for (var i = 0; i < playable.length; i++) {
-      var t = playable[i];
-      var val = tileValue(hand, t);
-      if (val < bestValue) {
-        bestValue = val;
-        bestTile = t;
-      }
+      var v = tileValue(hand, playable[i]);
+      if (v < bestVal) { bestVal = v; bestTile = playable[i]; }
+    }
+    // 10% 概率随机（不完美）
+    if (Math.random() < 0.1 && playable.length > 1) {
+      return playable[Math.floor(Math.random() * playable.length)];
     }
     return bestTile;
   }
 
-  // ---- Hard ----
-  // 用向听数 + 进张数精确评估，选最优出牌
+  // ========== Hard ==========
+  // 向听数 + 进张数联合优化
   var bestTileH = playable[0];
   var bestScoreH = -Infinity;
 
   for (var j = 0; j < playable.length; j++) {
     var th = playable[j];
-    var remaining = removeTile(hand, th);
-    var shanten = estimateShanten(remaining);
-    var waits = countWaitsFast(remaining);
-    // 综合评分：向听数越小越好，进张数越多越好
-    var score = -shanten * 100 + waits;
+    var score = discardScore(hand, th, 'hard');
+    // 额外：如果手牌中有多张该牌，稍微倾向保留（有更好的结构）
+    var cnt = 0;
+    for (var c = 0; c < hand.length; c++) { if (hand[c] === th) cnt++; }
+    if (cnt >= 2) score -= 2; // 微调，倾向拆散孤张
+
     if (score > bestScoreH) {
       bestScoreH = score;
       bestTileH = th;
@@ -608,37 +716,45 @@ function getAIDecision(hand, difficulty) {
 }
 
 // ============================================================
-//  AI 碰决策（重写）
+//  AI 碰决策
 // ============================================================
 
+/**
+ * shouldPeng(hand, tile, difficulty) → boolean
+ */
 function shouldPeng(hand, tile, difficulty) {
-  // 前置检查：手牌中要有2张该牌才能碰
-  if (hand.filter(function(t){ return t === tile; }).length < 2) return false;
+  // 前置：手牌中要有至少2张该牌
+  var pairCount = 0;
+  for (var i = 0; i < hand.length; i++) {
+    if (hand[i] === tile) pairCount++;
+  }
+  if (pairCount < 2) return false;
 
-  // ---- Easy ----
+  // ========== Easy ==========
   if (difficulty === 'easy') {
-    return Math.random() < 0.6;
+    return Math.random() < 0.55;
   }
 
-  // ---- Medium / Hard ----
-  // 碰后手牌减少2张
+  // ========== Medium / Hard ==========
   var after = removeTiles(hand, [tile, tile]);
   var shBefore = estimateShanten(hand);
   var shAfter = estimateShanten(after);
 
   if (difficulty === 'hard') {
-    // Hard: 向听数减少就碰，相等时看进张数变化
     if (shAfter < shBefore) return true;
     if (shAfter === shBefore) {
-      // 向听数没变，比较进张数
-      var waitsBefore = countWaitsFast(hand);
-      var waitsAfter = countWaitsFast(after);
-      return waitsAfter >= waitsBefore;
+      // 向听数不变，比较进张数
+      var wBefore = countWaitsFast(hand);
+      var wAfter = countWaitsFast(after);
+      return wAfter >= wBefore;
     }
+    // 向听数增加，不碰
+    // 特殊情况：如果已经是听牌(0)，碰后变1，坚决不碰
+    if (shBefore <= 0) return false;
     return false;
   }
 
-  // Medium: 向听数减少就碰，否则不碰
+  // Medium: 向听数减少才碰
   return shAfter < shBefore;
 }
 
@@ -646,54 +762,99 @@ function shouldPeng(hand, tile, difficulty) {
 //  AI 胡牌决策
 // ============================================================
 
+/**
+ * shouldHu(hand, tile) → boolean
+ * 能胡就胡。
+ */
 function shouldHu(hand, tile) {
-  // 能胡就胡，永远返回 true
   return true;
 }
 
 // ============================================================
-//  AI 杠决策（重写）
+//  AI 杠决策
 // ============================================================
 
+/**
+ * shouldGang(hand, tile, gangType, difficulty) → boolean
+ * gangType: 'an_gang' | 'bu_gang' | 'ming_gang'
+ */
 function shouldGang(hand, tile, gangType, difficulty) {
-  // 暗杠 (an_gang) 和 补杠 (bu_gang)：100% 执行
+  // 暗杠、补杠：100% 执行
   if (gangType === 'an_gang' || gangType === 'bu_gang') {
     return true;
   }
 
-  // 明杠 (ming_gang)：评估后决定
-  // Easy: 简单起见也直接杠
+  // 明杠：评估后决定
   if (difficulty === 'easy') {
+    // Easy 直接杠
     return true;
   }
 
-  // Medium / Hard: 评估杠后的向听数变化
+  // Medium / Hard：评估杠后的向听数变化
   var after = removeTiles(hand, [tile, tile, tile]);
   var shBefore = estimateShanten(hand);
   var shAfter = estimateShanten(after);
+
+  if (difficulty === 'hard') {
+    // 如果已听牌，杠了会破坏听牌，不杠
+    if (shBefore <= 0 && shAfter > shBefore) return false;
+    // 向听数不增加才杠
+    if (shAfter <= shBefore) return true;
+    return false;
+  }
+
+  // Medium: 向听数减少或不变才杠
   return shAfter <= shBefore;
+}
+
+// ============================================================
+//  AI 延迟（模拟思考时间）
+// ============================================================
+
+function getAIDelay(difficulty) {
+  if (difficulty === 'easy') return 300 + Math.random() * 400;
+  if (difficulty === 'hard') return 600 + Math.random() * 800;
+  return 400 + Math.random() * 600;
 }
 
 // ============================================================
 //  导出
 // ============================================================
 
+var exports = {
+  // 核心 API
+  getAIDecision:  getAIDecision,
+  shouldPeng:     shouldPeng,
+  shouldHu:       shouldHu,
+  shouldGang:     shouldGang,
+  getAIDelay:     getAIDelay,
+
+  // 胡牌检测
+  canWin:         canWin,
+  calcShanten:    estimateShanten,
+  countWaits:     countWaitsFast,
+
+  // 工具函数
+  handToCounts:   handToCounts,
+  sortHand:       sortHand,
+  removeTile:     removeTile,
+  countHongZhong: countHongZhong,
+  nonHongZhong:   nonHongZhong,
+  findIsolatedTiles: findIsolatedTiles,
+
+  // 常量
+  HONG_ZHONG:  HONG_ZHONG,
+  SUIT_WAN:    SUIT_WAN,
+  SUIT_TIAO:   SUIT_TIAO,
+  SUIT_TONG:   SUIT_TONG,
+  SUIT_ZI:     SUIT_ZI,
+  TILE_NAMES:  TILE_NAMES
+};
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = {
-    calcShanten: estimateShanten,
-    getAIDecision, shouldPeng, shouldHu, shouldGang,
-    canWin, countWaits: countWaitsFast,
-    findIsolatedTiles, getAIDelay: function(){ return 500 + Math.random() * 500; },
-    HONG_ZHONG, SUIT_WAN, SUIT_TIAO, SUIT_TONG, SUIT_ZI, TILE_NAMES,
-    handToCounts, sortHand, removeTile, countHongZhong, nonHongZhong,
-  };
+  module.exports = exports;
 } else {
-  window.AIModule = {
-    calcShanten: estimateShanten,
-    getAIDecision, shouldPeng, shouldHu, shouldGang,
-    canWin, countWaits: countWaitsFast,
-    findIsolatedTiles, getAIDelay: function(){ return 500 + Math.random() * 500; },
-    HONG_ZHONG, SUIT_WAN, SUIT_TIAO, SUIT_TONG, SUIT_ZI, TILE_NAMES,
-    handToCounts, sortHand, removeTile, countHongZhong, nonHongZhong,
-  };
+  root.AIModule = exports;
 }
+
+})(typeof window !== 'undefined' ? window : globalThis);
