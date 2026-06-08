@@ -43,45 +43,66 @@ function rankOf(tile) {
 }
 
 function isNumberTile(tile) {
-  const s = suitOf(tile);
+  var s = suitOf(tile);
   return s === SUIT_WAN || s === SUIT_TIAO || s === SUIT_TONG;
 }
 
 function handToCounts(hand) {
-  const counts = {};
-  for (const t of hand) {
+  var counts = {};
+  for (var i = 0; i < hand.length; i++) {
+    var t = hand[i];
     counts[t] = (counts[t] || 0) + 1;
   }
   return counts;
 }
 
 function sortHand(hand) {
-  return [...hand].sort((a, b) => a - b);
+  return hand.slice().sort(function(a, b) { return a - b; });
 }
 
 function removeTile(hand, tile) {
-  const idx = hand.indexOf(tile);
-  if (idx === -1) return [...hand];
-  const copy = [...hand];
+  var idx = hand.indexOf(tile);
+  if (idx === -1) return hand.slice();
+  var copy = hand.slice();
   copy.splice(idx, 1);
   return copy;
 }
 
 function removeTiles(hand, tiles) {
-  let copy = [...hand];
-  for (const t of tiles) {
-    const idx = copy.indexOf(t);
+  var copy = hand.slice();
+  for (var i = 0; i < tiles.length; i++) {
+    var idx = copy.indexOf(tiles[i]);
     if (idx !== -1) copy.splice(idx, 1);
   }
   return copy;
 }
 
 function countHongZhong(hand) {
-  return hand.filter(t => t === HONG_ZHONG).length;
+  var c = 0;
+  for (var i = 0; i < hand.length; i++) {
+    if (hand[i] === HONG_ZHONG) c++;
+  }
+  return c;
 }
 
 function nonHongZhong(hand) {
-  return hand.filter(t => t !== HONG_ZHONG);
+  var result = [];
+  for (var i = 0; i < hand.length; i++) {
+    if (hand[i] !== HONG_ZHONG) result.push(hand[i]);
+  }
+  return result;
+}
+
+/** 获取手牌中所有可以打出的非红中牌（去重） */
+function getPlayableTiles(hand) {
+  var seen = {};
+  var result = [];
+  for (var i = 0; i < hand.length; i++) {
+    var t = hand[i];
+    if (t === HONG_ZHONG) continue;
+    if (!seen[t]) { seen[t] = true; result.push(t); }
+  }
+  return result;
 }
 
 // ============================================================
@@ -410,31 +431,69 @@ function countWaitsFast(hand) {
 }
 
 // ============================================================
-//  出牌候选评分（纯贪心，无递归）
+//  评估单张牌的价值（用于 Medium / Hard AI）
 // ============================================================
 
-function evaluateDiscardFast(hand, candidate) {
-  var remaining = removeTile(hand, candidate);
-  var shanten = estimateShanten(remaining);
-  var waits = countWaitsFast(remaining);
-  var score = waits * 10 - shanten * 50;
-  if (candidate === HONG_ZHONG) score -= 80;
-  return score;
+/**
+ * 评估手牌中某张牌的价值。价值越高 = 越不想打出。
+ * 不考虑红中（红中永远不打）。
+ */
+function tileValue(hand, tile) {
+  if (tile === HONG_ZHONG) return 9999;
+
+  var counts = handToCounts(hand);
+  var cnt = counts[tile] || 0;
+  var value = 0;
+
+  // 对子/刻子价值
+  if (cnt >= 3) value += 8;
+  else if (cnt >= 2) value += 5;
+
+  if (isNumberTile(tile)) {
+    var s = suitOf(tile);
+    var r = rankOf(tile);
+
+    // 相邻牌 +3 每个
+    if (r >= 2 && counts[s + (r - 1)]) value += 3;
+    if (r <= 8 && counts[s + (r + 1)]) value += 3;
+
+    // 顺子完成 +5（检查是否能和两边组成顺子）
+    // r-2, r-1, r
+    if (r >= 3 && counts[s + (r - 2)] && counts[s + (r - 1)]) value += 5;
+    // r-1, r, r+1
+    if (r >= 2 && r <= 8 && counts[s + (r - 1)] && counts[s + (r + 1)]) value += 5;
+    // r, r+1, r+2
+    if (r <= 7 && counts[s + (r + 1)] && counts[s + (r + 2)]) value += 5;
+
+    // 边张（1或9）价值稍低，更容易被打出
+    if (r === 1 || r === 9) value -= 1;
+  }
+
+  return value;
 }
+
+// ============================================================
+//  找孤张（Easy AI 专用）
+// ============================================================
 
 function findIsolatedTiles(hand) {
   var isolated = [];
-  var tiles = nonHongZhong(hand);
-  var counts = handToCounts(tiles);
+  var seen = {};
+  var counts = handToCounts(hand);
 
   for (var i = 0; i < hand.length; i++) {
     var tile = hand[i];
     if (tile === HONG_ZHONG) continue;
+    if (seen[tile]) continue;
+    seen[tile] = true;
 
     var s = suitOf(tile), r = rankOf(tile);
     var related = false;
 
+    // 有对子或以上
     if (counts[tile] >= 2) related = true;
+
+    // 有相邻牌
     if (!related && isNumberTile(tile)) {
       for (var dr = -2; dr <= 2; dr++) {
         if (dr === 0) continue;
@@ -449,75 +508,170 @@ function findIsolatedTiles(hand) {
 }
 
 // ============================================================
-//  AI 出牌决策
+//  找边张（rank 1 或 9 的非红中牌，Easy AI 备选）
 // ============================================================
 
-function getAIDecision(hand, difficulty) {
-  if (hand.length === 0) return null;
-
-  var sorted = sortHand(hand);
-
-  if (difficulty === 'easy') {
-    if (Math.random() < 0.3 && sorted.indexOf(HONG_ZHONG) !== -1) return HONG_ZHONG;
-    if (Math.random() < 0.6) {
-      var iso = findIsolatedTiles(sorted);
-      if (iso.length > 0) return iso[Math.floor(Math.random() * iso.length)];
-    }
-    return sorted[Math.floor(Math.random() * sorted.length)];
-  }
-
-  // medium / hard：评估每种候选牌，选最优
-  var bestTile = sorted[0], bestScore = -Infinity;
+function findEdgeTiles(hand) {
+  var edges = [];
   var seen = {};
-  for (var i = 0; i < sorted.length; i++) {
-    var tile = sorted[i];
+  for (var i = 0; i < hand.length; i++) {
+    var tile = hand[i];
+    if (tile === HONG_ZHONG) continue;
     if (seen[tile]) continue;
     seen[tile] = true;
-    var score = evaluateDiscardFast(sorted, tile) + (Math.random() - 0.5) * 10;
-    if (score > bestScore) { bestScore = score; bestTile = tile; }
+    if (isNumberTile(tile)) {
+      var r = rankOf(tile);
+      if (r === 1 || r === 9) edges.push(tile);
+    }
   }
-  return bestTile;
+  return edges;
 }
 
 // ============================================================
-//  AI 碰/胡/杠决策
+//  出牌候选评分（纯贪心，无递归）
+// ============================================================
+
+function evaluateDiscardFast(hand, candidate) {
+  var remaining = removeTile(hand, candidate);
+  var shanten = estimateShanten(remaining);
+  var waits = countWaitsFast(remaining);
+  var score = waits * 10 - shanten * 50;
+  if (candidate === HONG_ZHONG) score -= 80;
+  return score;
+}
+
+// ============================================================
+//  AI 出牌决策（核心函数，重写）
+// ============================================================
+
+/**
+ * 返回要打出的牌的值（不是索引）。
+ * 绝对不会返回 HONG_ZHONG (0x41)。
+ */
+function getAIDecision(hand, difficulty) {
+  if (hand.length === 0) return null;
+
+  // 获取所有可打的牌（排除红中）
+  var playable = getPlayableTiles(hand);
+  if (playable.length === 0) return null; // 只剩红中，无法出牌
+
+  // ---- Easy ----
+  if (difficulty === 'easy') {
+    // 第一优先：找孤张
+    var iso = findIsolatedTiles(hand);
+    if (iso.length > 0) {
+      return iso[Math.floor(Math.random() * iso.length)];
+    }
+    // 第二优先：找边张（1或9）
+    var edges = findEdgeTiles(hand);
+    if (edges.length > 0) {
+      return edges[Math.floor(Math.random() * edges.length)];
+    }
+    // 兜底：随机打一张非红中
+    return playable[Math.floor(Math.random() * playable.length)];
+  }
+
+  // ---- Medium ----
+  if (difficulty === 'medium') {
+    var bestTile = playable[0];
+    var bestValue = Infinity;
+
+    for (var i = 0; i < playable.length; i++) {
+      var t = playable[i];
+      var val = tileValue(hand, t);
+      if (val < bestValue) {
+        bestValue = val;
+        bestTile = t;
+      }
+    }
+    return bestTile;
+  }
+
+  // ---- Hard ----
+  // 用向听数 + 进张数精确评估，选最优出牌
+  var bestTileH = playable[0];
+  var bestScoreH = -Infinity;
+
+  for (var j = 0; j < playable.length; j++) {
+    var th = playable[j];
+    var remaining = removeTile(hand, th);
+    var shanten = estimateShanten(remaining);
+    var waits = countWaitsFast(remaining);
+    // 综合评分：向听数越小越好，进张数越多越好
+    var score = -shanten * 100 + waits;
+    if (score > bestScoreH) {
+      bestScoreH = score;
+      bestTileH = th;
+    }
+  }
+  return bestTileH;
+}
+
+// ============================================================
+//  AI 碰决策（重写）
 // ============================================================
 
 function shouldPeng(hand, tile, difficulty) {
+  // 前置检查：手牌中要有2张该牌才能碰
   if (hand.filter(function(t){ return t === tile; }).length < 2) return false;
-  if (difficulty === 'easy') return Math.random() < 0.5;
 
+  // ---- Easy ----
+  if (difficulty === 'easy') {
+    return Math.random() < 0.6;
+  }
+
+  // ---- Medium / Hard ----
+  // 碰后手牌减少2张
   var after = removeTiles(hand, [tile, tile]);
   var shBefore = estimateShanten(hand);
   var shAfter = estimateShanten(after);
 
-  if (shAfter < shBefore) {
-    if (tile === HONG_ZHONG) return Math.random() < 0.4;
-    return Math.random() < 0.8;
+  if (difficulty === 'hard') {
+    // Hard: 向听数减少就碰，相等时看进张数变化
+    if (shAfter < shBefore) return true;
+    if (shAfter === shBefore) {
+      // 向听数没变，比较进张数
+      var waitsBefore = countWaitsFast(hand);
+      var waitsAfter = countWaitsFast(after);
+      return waitsAfter >= waitsBefore;
+    }
+    return false;
   }
-  if (tile === HONG_ZHONG) return Math.random() < 0.15;
-  return Math.random() < 0.1;
+
+  // Medium: 向听数减少就碰，否则不碰
+  return shAfter < shBefore;
 }
 
+// ============================================================
+//  AI 胡牌决策
+// ============================================================
+
 function shouldHu(hand, tile) {
+  // 能胡就胡，永远返回 true
   return true;
 }
 
-function shouldGang(hand, tile, gangType, difficulty) {
-  if (difficulty === 'easy') return Math.random() < 0.5;
+// ============================================================
+//  AI 杠决策（重写）
+// ============================================================
 
+function shouldGang(hand, tile, gangType, difficulty) {
+  // 暗杠 (an_gang) 和 补杠 (bu_gang)：100% 执行
   if (gangType === 'an_gang' || gangType === 'bu_gang') {
-    if (tile === HONG_ZHONG) {
-      if (countHongZhong(hand) === 4) return true;
-      var sh = estimateShanten(removeTiles(hand, [tile, tile, tile]));
-      return sh <= 0;
-    }
     return true;
   }
 
-  // 明杠
+  // 明杠 (ming_gang)：评估后决定
+  // Easy: 简单起见也直接杠
+  if (difficulty === 'easy') {
+    return true;
+  }
+
+  // Medium / Hard: 评估杠后的向听数变化
   var after = removeTiles(hand, [tile, tile, tile]);
-  return estimateShanten(after) <= estimateShanten(hand);
+  var shBefore = estimateShanten(hand);
+  var shAfter = estimateShanten(after);
+  return shAfter <= shBefore;
 }
 
 // ============================================================
