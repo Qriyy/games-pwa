@@ -87,6 +87,7 @@ window.GameFlow = (function () {
       st.turnPhase = 'discard';
     } else {
       st.phase = 'aiTurn';
+      st.turnPhase = 'draw';
     }
 
     window.UI.updateButtons();
@@ -350,9 +351,16 @@ window.GameFlow = (function () {
       }
     } catch (err) {
       console.error('nextTurn异常:', err);
-      st.phase = 'playerTurn'; st.turnPhase = 'discard';
-      st.selectedIdx = -1;
-      window.UI.updateButtons(); render();
+      // 强制推进到下一个玩家，不要卡死
+      const skipNext = NEXT[next];
+      st.currentPlayer = skipNext;
+      if (skipNext === 0) {
+        st.phase = 'playerTurn'; st.turnPhase = 'discard';
+        st.selectedIdx = -1;
+        window.UI.updateButtons(); render();
+      } else {
+        aiTurn(skipNext);
+      }
     }
   }
 
