@@ -309,9 +309,9 @@ window.Renderer = (function () {
     // 玩家手牌
     var tw = Math.round(44 * scale);
     var th = Math.round(59 * scale);
-    // 弃牌（手牌的60%）
-    var dw = Math.round(26 * scale);
-    var dh = Math.round(35 * scale);
+    // 弃牌（手牌的45%）
+    var dw = Math.round(20 * scale);
+    var dh = Math.round(27 * scale);
     // 副露牌
     var mw = Math.round(28 * scale);
     var mh = Math.round(37 * scale);
@@ -369,8 +369,8 @@ window.Renderer = (function () {
 
     var tw = Math.round(40 * scale);
     var th = Math.round(54 * scale);
-    var dw = Math.round(24 * scale);
-    var dh = Math.round(32 * scale);
+    var dw = Math.round(18 * scale);
+    var dh = Math.round(24 * scale);
     var mw = Math.round(26 * scale);
     var mh = Math.round(35 * scale);
     var aiTW = Math.round(28 * scale);
@@ -651,24 +651,38 @@ window.Renderer = (function () {
     var dPitchX = dw + gap;
     var dPitchY = dh + gap;
 
+    // 每家弃牌底部朝自己
+    // 南(0): 0°, 北(1): 180°, 西(2): 90°, 东(3): -90°
+    var rotations = [0, Math.PI, Math.PI / 2, -Math.PI / 2];
+    var angle = rotations[pid];
+
+    function drawRotatedTile(tx, ty, tileId) {
+      if (angle === 0) {
+        drawTile(tx, ty, dw, dh, tileId, true, false, false);
+      } else {
+        ctx.save();
+        ctx.translate(tx + dw / 2, ty + dh / 2);
+        ctx.rotate(angle);
+        drawTile(-dw / 2, -dh / 2, dw, dh, tileId, true, false, false);
+        ctx.restore();
+      }
+    }
+
     if (area.mode === 'v') {
-      // 竖排：从上到下，每列到 rows 后换列
       var rows = area.rows || 6;
       for (var i = 0; i < disc.length; i++) {
         var col = Math.floor(i / rows);
         var row = i % rows;
         var tx;
         if (area.reverseCol) {
-          // 东家：从右往左换列
           tx = area.x + (area.cols - 1 - col) * dPitchX;
         } else {
           tx = area.x + col * dPitchX;
         }
         var ty = area.y + row * dPitchY;
-        drawTile(tx, ty, dw, dh, disc[i], true, false, false);
+        drawRotatedTile(tx, ty, disc[i]);
       }
     } else {
-      // 横排：从左到右，超过 cols 换行
       var cols = area.cols || 7;
       for (var i = 0; i < disc.length; i++) {
         var row = Math.floor(i / cols);
@@ -676,12 +690,11 @@ window.Renderer = (function () {
         var tx = area.x + col * dPitchX;
         var ty;
         if (area.growUp) {
-          // 南家：从下往上增长行（第一行在最下面）
           ty = area.y - row * dPitchY;
         } else {
           ty = area.y + row * dPitchY;
         }
-        drawTile(tx, ty, dw, dh, disc[i], true, false, false);
+        drawRotatedTile(tx, ty, disc[i]);
       }
     }
   }
