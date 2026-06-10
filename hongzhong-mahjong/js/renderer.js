@@ -3,8 +3,8 @@
  * 核心原则：像真的坐在麻将桌前
  *   - 两边AI(西/东)：俯视横向牌堆，牌背朝上
  *   - 对家(北)：横向小牌背，风圈头像
- *   - 弃牌区：南/北横排，西/东竖排
- *   - 碰/杠在手牌左侧
+ *   - 弃牌区：在桌面上可见，南/北横排，西/东竖排
+ *   - 碰/杠：AI在手牌旁，玩家在手牌下方居中
  *   - 牌面：万蓝 / 条绿 / 筒红 / 红中大红
  *   - 牌背：深绿+暗纹，牌面：象牙白渐变
  *   - DPI自适应，竖屏优先
@@ -261,42 +261,38 @@ window.Renderer = (function () {
 
   /* ==== 公共弃牌布局计算 ==== */
   function _calcDiscardAreas(tableL, tableTop, tableW, tableH, dPitchX, dPitchY, dw, dh, gap, playerY) {
+    // [Fix #5 #6] 弃牌：东西家无缝隙、只一行（单行/单列）
     // 弃牌紧挨每家手牌前面（靠近桌面中心方向）
-    // 南家手牌在 playerY，弃牌在 playerY 上方
-    // 北家手牌在 topH，弃牌在 topH 下方
-    // 西家手牌在 sideW，弃牌在 sideW 右侧
-    // 东家手牌在 W-sideW，弃牌在左侧
 
-    var horzCols = 7; // 横排最多7张
-    var vertRows = 6; // 竖排每列6张
+    var horzCols = 7; // 横排最多7张（单行）
 
     return {
-      // 南(0)：横排，在手牌上方
+      // 南(0)：横排单行，在手牌上方
       0: {
         x: tableL + (tableW - horzCols * (dw + gap)) / 2,
         y: playerY - dh - gap * 3,
         cols: horzCols, tw: dw, th: dh,
         mode: 'h', growUp: false
       },
-      // 北(1)：横排，在北家手牌下方
+      // 北(1)：横排单行，在北家手牌下方
       1: {
         x: tableL + (tableW - horzCols * (dw + gap)) / 2,
         y: tableTop + Math.round(tableH * 0.12),
         cols: horzCols, tw: dw, th: dh,
         mode: 'h', growUp: false
       },
-      // 西(2)：竖排，在西家手牌右侧
+      // [Fix #5] 西(2)：单列竖排，无缝隙，在西家手牌右侧
       2: {
         x: tableL + Math.round(tableW * 0.08),
-        y: tableTop + Math.round(tableH * 0.15),
-        rows: vertRows, cols: 2, tw: dw, th: dh,
+        y: tableTop + Math.round(tableH * 0.12),
+        rows: 20, cols: 1, tw: dw, th: dh,
         mode: 'v', reverseCol: false
       },
-      // 东(3)：竖排，在东家手牌左侧
+      // [Fix #5] 东(3)：单列竖排，无缝隙，在东家手牌左侧
       3: {
-        x: tableL + tableW - Math.round(tableW * 0.08) - 2 * (dw + gap),
-        y: tableTop + Math.round(tableH * 0.15),
-        rows: vertRows, cols: 2, tw: dw, th: dh,
+        x: tableL + tableW - Math.round(tableW * 0.08) - dw,
+        y: tableTop + Math.round(tableH * 0.12),
+        rows: 20, cols: 1, tw: dw, th: dh,
         mode: 'v', reverseCol: true
       }
     };
@@ -312,9 +308,9 @@ window.Renderer = (function () {
     // 弃牌（手牌的45%）
     var dw = Math.round(20 * scale);
     var dh = Math.round(27 * scale);
-    // 副露牌
-    var mw = Math.round(28 * scale);
-    var mh = Math.round(37 * scale);
+    // 副露牌（和弃牌一样大，避免重叠）
+    var mw = dw;
+    var mh = dh;
     // AI牌背：俯视横向（宽 > 高），像一摞躺着的牌
     var aiTW = Math.round(28 * scale);  // 横向宽
     var aiTH = Math.round(18 * scale);  // 横向高
@@ -324,6 +320,8 @@ window.Renderer = (function () {
     var topH    = Math.round(H * 0.11);           // 北家
     var sideW   = Math.round(W * 0.13);           // 东西
     var playerH = Math.round(H * 0.28);           // 玩家
+    // [Fix #7] 减少玩家区域高度，手牌下移靠近按钮，上方桌面更大
+    playerH = Math.round(H * 0.19);
     var tableTop = topH;
     var tableBot = H - btnH - playerH;
     var tableH   = Math.max(100, tableBot - tableTop);
@@ -361,6 +359,8 @@ window.Renderer = (function () {
     L.right = { cx: W - sideW * 0.5, cy: tableTop + tableH * 0.5 };
 
     L.discard = _calcDiscardAreas(tableL, tableTop, tableW, tableH, dPitchX, dPitchY, dw, dh, dGap, L.playerY);
+    // 南家弃牌移到副露上方（避免与副露牌重叠）
+    L.discard[0].y = L.playerY - L.mh - L.dGap - L.dh - L.dGap;
   }
 
   /* ==== 横屏布局 ==== */
@@ -483,17 +483,19 @@ window.Renderer = (function () {
       drawTile(sx + i * (tw + gap), L2.cy - th / 2, tw, th, 0, false, false, false);
     }
 
-    // 副露在手牌下方（居中，避免和弃牌重叠）
+    // [Fix #1] 副露放在桌面上（手牌下方靠近桌面中心），用缩小牌
     var melds = st.melds[pid] || [];
     if (melds.length > 0) {
-      var meldGap = 4;
+      var meldGap = 3;
       var totalMeldW = 0;
       for (var m = 0; m < melds.length; m++) {
         var tc = melds[m].type === 'gang' ? 4 : 3;
         totalMeldW += tc * (L.mw + 2) + meldGap;
       }
+      totalMeldW -= meldGap;
       var meldX = L2.cx - totalMeldW / 2;
-      drawMelds(melds, meldX, L2.cy + th / 2 + 4, true);
+      var meldY = L.table.t + Math.round(L.table.h * 0.04);
+      drawMelds(melds, meldX, meldY, true);
     }
   }
 
@@ -523,10 +525,11 @@ window.Renderer = (function () {
       drawTile(startX, startY + i * (th + gap), tw, th, 0, false, false, false);
     }
 
-    // 副露在手牌右边（竖排，避免和弃牌重叠）
+    // [Fix #1] 副露放在桌面上（手牌右侧靠近桌面中心），用缩小牌
     var melds = st.melds[pid] || [];
     if (melds.length > 0) {
-      drawMelds(melds, startX + tw + 6, startY, false);
+      var meldX = L.table.l + Math.round(L.table.w * 0.04);
+      drawMelds(melds, meldX, startY, false);
     }
   }
 
@@ -555,10 +558,17 @@ window.Renderer = (function () {
       drawTile(startX, startY + i * (th + gap), tw, th, 0, false, false, false);
     }
 
-    // 副露在手牌左边（竖排，避免和弃牌重叠）
+    // [Fix #1] 副露放在桌面上（手牌左侧靠近桌面中心），用缩小牌
     var melds = st.melds[pid] || [];
     if (melds.length > 0) {
-      drawMelds(melds, startX - L.mw - 6, startY, false);
+      var meldTotalW = 0;
+      for (var m = 0; m < melds.length; m++) {
+        var tc = melds[m].type === 'gang' ? 4 : 3;
+        meldTotalW += tc * (L.mw + 2) + 3;
+      }
+      meldTotalW -= 3;
+      var meldX = L.table.l + L.table.w - Math.round(L.table.w * 0.04) - meldTotalW;
+      drawMelds(melds, meldX, startY, false);
     }
   }
 
@@ -583,23 +593,12 @@ window.Renderer = (function () {
     var n = hand.length;
     if (n === 0) { st._playerTilePositions = []; return; }
 
-    // 碰杠在左侧
+    // 副露信息（后面画在手牌下方）
     var melds = st.melds[pid] || [];
-    var meldW = 0;
-    if (melds.length > 0) {
-      var meldGap = 4;
-      var singleMeldW = 0;
-      for (var m = 0; m < melds.length; m++) {
-        var tc = melds[m].type === 'gang' ? 4 : 3;
-        singleMeldW += tc * (L.mw + 2) + meldGap;
-      }
-      meldW = singleMeldW + 4;
-      drawMelds(melds, 4, barY + 26, true);
-    }
 
-    // 手牌起始X（碰杠右侧开始）
+    // 手牌全宽（碰杠不再占左侧空间）
     var padX = 2;
-    var availW = W - padX * 2 - meldW;
+    var availW = W - padX * 2;
 
     // 自动缩小
     var pitch, tw, th;
@@ -614,8 +613,9 @@ window.Renderer = (function () {
     }
 
     var totalW = (n - 1) * pitch + tw;
-    var sx = meldW + padX + (availW - totalW) / 2;
-    var handY = barY + 24;
+    var sx = padX + (availW - totalW) / 2;
+    // [Fix #7] 下移手牌，减少下方留白
+    var handY = barY + Math.round(th * 0.3);
 
     st._playerTilePositions = [];
     var ni = n - 1;
@@ -636,6 +636,20 @@ window.Renderer = (function () {
         idx: i
       });
     }
+
+    // [Fix #4] 副露牌放在手牌上方、弃牌下方（避免重叠）
+    if (melds.length > 0) {
+      var meldGap = 3;
+      var totalMeldW = 0;
+      for (var m = 0; m < melds.length; m++) {
+        var tc = melds[m].type === 'gang' ? 4 : 3;
+        totalMeldW += tc * (L.mw + 2) + meldGap;
+      }
+      totalMeldW -= meldGap;
+      var meldX = (W - totalMeldW) / 2;
+      var meldY = playerY - L.mh - L.dGap;
+      drawMelds(melds, meldX, meldY, true);
+    }
   }
 
   /* ================================================================
@@ -646,10 +660,28 @@ window.Renderer = (function () {
     if (!disc || disc.length === 0) return;
 
     var area = L.discard[pid];
-    var dw = area.tw, dh = area.th;
+    var dw0 = area.tw, dh0 = area.th;
     var gap = L.dGap || 2;
+    var dw = dw0, dh = dh0;
     var dPitchX = dw + gap;
     var dPitchY = dh + gap;
+
+    // [Fix #6] 弃牌只一行：超出时缩小间距或缩小牌
+    if (area.mode === 'h') {
+      var cols = area.cols || 7;
+      if (disc.length > cols) {
+        // 超出列数 → 缩小间距让所有牌塞进一行
+        dPitchX = (cols * (dw + gap)) / disc.length;
+        dw = Math.max(dPitchX - gap, dw * 0.5);
+      }
+    } else {
+      // 竖排单列：rows足够大(20)，不会溢出
+      var rows = area.rows || 20;
+      if (disc.length > rows) {
+        dPitchY = (rows * (dh + gap)) / disc.length;
+        dh = Math.max(dPitchY - gap, dh * 0.5);
+      }
+    }
 
     // 每家弃牌底部朝自己
     // 南(0): 0°, 北(1): 180°, 西(2): 90°, 东(3): -90°
@@ -669,31 +701,27 @@ window.Renderer = (function () {
     }
 
     if (area.mode === 'v') {
-      var rows = area.rows || 6;
+      // [Fix #5 #6] 单列竖排，cols=1，无列间缝隙
+      var rows = area.rows || 20;
       for (var i = 0; i < disc.length; i++) {
         var col = Math.floor(i / rows);
         var row = i % rows;
         var tx;
         if (area.reverseCol) {
-          tx = area.x + (area.cols - 1 - col) * dPitchX;
+          tx = area.x + (area.cols - 1 - col) * (dw + gap);
         } else {
-          tx = area.x + col * dPitchX;
+          tx = area.x + col * (dw + gap);
         }
         var ty = area.y + row * dPitchY;
         drawRotatedTile(tx, ty, disc[i]);
       }
     } else {
+      // [Fix #6] 单行横排，不换行
       var cols = area.cols || 7;
       for (var i = 0; i < disc.length; i++) {
-        var row = Math.floor(i / cols);
         var col = i % cols;
         var tx = area.x + col * dPitchX;
-        var ty;
-        if (area.growUp) {
-          ty = area.y - row * dPitchY;
-        } else {
-          ty = area.y + row * dPitchY;
-        }
+        var ty = area.y;
         drawRotatedTile(tx, ty, disc[i]);
       }
     }
