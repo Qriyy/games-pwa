@@ -32,30 +32,19 @@ window.Actions = (function() {
     if (dIdx >= 0) discPile.splice(dIdx, 1);
 
     const base = tileBaseId(tile);
-    let removed = 0;
+    let removedTiles = [];
     st.hands[playerIdx] = st.hands[playerIdx].filter(t => {
-      if (removed < 2 && !isHongzhong(t) && tileBaseId(t) === base) {
-        removed++;
+      if (removedTiles.length < 2 && !isHongzhong(t) && tileBaseId(t) === base) {
+        removedTiles.push(t);
         return false;
       }
       return true;
     });
-    // 如果自然牌不足，用红中补
-    if (removed < 2) {
-      st.hands[playerIdx] = st.hands[playerIdx].filter(t => {
-        if (removed < 2 && isHongzhong(t)) {
-          removed++;
-          return false;
-        }
-        return true;
-      });
-    }
 
-    // 记录 wildUsed 以便后续检测红中杠时排除
     st.melds[playerIdx].push({
       type: 'peng',
-      tiles: [tile, tile, tile],
-      wildUsed: (removed < 2),
+      tiles: [tile, ...removedTiles],
+      wildUsed: false,
     });
     st.lastDiscard = -1;
 
@@ -83,18 +72,10 @@ window.Actions = (function() {
         }
         return true;
       });
-      if (removed < 3) {
-        st.hands[playerIdx] = st.hands[playerIdx].filter(t => {
-          if (removed < 3 && isHongzhong(t)) {
-            removed++;
-            return false;
-          }
-          return true;
-        });
-      }
 
       gangType = 'gang';
       tiles = [tile, tile, tile, tile];
+      st.melds[playerIdx].push({ type: 'gang', tiles: [tile, tile, tile, tile] });
     } else {
       // 暗杠或补杠
       let buGang = false;

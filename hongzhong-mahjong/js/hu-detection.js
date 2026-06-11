@@ -9,27 +9,13 @@ window.HuDetection = (function() {
   // ============== 胡牌检测 ==============
 
   function canHu(hand, melds) {
-    // Rule: 胡牌必须至少包含1张红中(包括已组成杠中的红中)
-    let hasHongzhong = false;
-    for (const t of hand) { if (isHongzhong(t)) { hasHongzhong = true; break; } }
-    if (!hasHongzhong && melds) {
-      for (const meld of melds) {
-        if (!meld.tiles) continue;
-        for (const t of meld.tiles) {
-          if (isHongzhong(t)) { hasHongzhong = true; break; }
-        }
-        if (hasHongzhong) break;
-      }
-    }
-    if (!hasHongzhong) return { canHu: false, type: null, fan: 0 };
-
-    // Check 七小对 / 龙七对 (7 pairs, 14 tiles only)
-    if (hand.length === 14 && checkQidui(hand)) {
+    // 七小对 / 龙七对
+    if (hand.length === 14) {
       if (checkLongQidui(hand)) return { canHu: true, type: 'longqidui', fan: 12 };
-      return { canHu: true, type: 'qidui', fan: 8 };
+      if (checkQidui(hand)) return { canHu: true, type: 'qidui', fan: 8 };
     }
 
-    // Check standard 4 melds + 1 pair
+    // Check standard 4 melds + 1 pair (不需要红中也能胡)
     const counts = {};
     let wildCount = 0;
     for (const t of hand) {
@@ -37,7 +23,9 @@ window.HuDetection = (function() {
       const b = tileBaseId(t);
       counts[b] = (counts[b] || 0) + 1;
     }
-    const normal = tryHu(counts, wildCount, 5);
+    const meldsCount = melds ? melds.length : 0;
+    const groupsNeeded = (hand.length < 14) ? (5 - meldsCount) : 5;
+    const normal = tryHu(counts, wildCount, groupsNeeded);
     if (normal) return { canHu: true, type: 'normal', fan: 1 };
     return { canHu: false, type: null, fan: 0 };
   }
@@ -187,14 +175,11 @@ window.HuDetection = (function() {
   function canPeng(hand, tile) {
     if (isHongzhong(tile)) return false;
     const base = tileBaseId(tile);
-    let natural = 0, wild = 0;
+    let natural = 0;
     for (const t of hand) {
-      if (isHongzhong(t)) wild++;
-      else if (tileBaseId(t) === base) natural++;
+      if (!isHongzhong(t) && tileBaseId(t) === base) natural++;
     }
-    if (natural >= 2) return true;
-    if (natural >= 1 && wild >= 1) return true;
-    return false;
+    return natural >= 2;
   }
 
   // ============== 七小对 & 特殊胡检测 ==============
@@ -310,6 +295,8 @@ window.HuDetection = (function() {
   // ============== 杠牌检测 ==============
 
   function canGang(hand, tile, melds) {
+    // 红中不能用来杠
+    if (isHongzhong(tile)) return false;
     if (tile >= 0) {
       let natural = 0, wild = 0;
       for (const t of hand) {
@@ -317,16 +304,17 @@ window.HuDetection = (function() {
         else if (tileBaseId(t) === tileBaseId(tile)) natural++;
       }
       if (natural >= 3) return true;
-      if (natural >= 2 && wild >= 1) return true;
       return false;
     }
     const counts = countTiles(hand);
     for (const b in counts) {
+      if (parseInt(b) === 27) continue; // 红中不能杠
       if (counts[b] >= 4) return true;
     }
     for (const m of melds) {
       if (m.type === 'peng') {
         for (const t of hand) {
+          if (tileBaseId(m.tiles[0]) === 27) continue; // 红中不能碰后补杠
           if (tileBaseId(t) === tileBaseId(m.tiles[0])) return true;
         }
       }
@@ -338,10 +326,12 @@ window.HuDetection = (function() {
     const results = [];
     const counts = countTiles(hand);
     for (const b in counts) {
+      if (parseInt(b) === 27) continue; // 红中不能暗杠
       if (counts[b] >= 4) results.push(parseInt(b));
     }
     for (const m of melds) {
       if (m.type === 'peng') {
+        if (tileBaseId(m.tiles[0]) === 27) continue; // 红中不能碰后补杠
         for (const t of hand) {
           if (tileBaseId(t) === tileBaseId(m.tiles[0]) && !results.includes(tileBaseId(t))) {
             results.push(tileBaseId(t));

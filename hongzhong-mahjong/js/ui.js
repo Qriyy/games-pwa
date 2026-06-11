@@ -6,7 +6,6 @@ window.UI = (function() {
   var HuDetection = window.HuDetection;
   var Actions = window.Actions;
   var GameFlow = window.GameFlow;
-  var canvas = window.Renderer.canvas;
   var render = window.Renderer.render;
 
   function s() { return window.state; }
@@ -45,7 +44,9 @@ window.UI = (function() {
     if (st.phase !== 'playerTurn' || st.turnPhase !== 'discard') return;
     if (!st._playerTilePositions || !st._playerTilePositions.length) return;
 
-    var rect = canvas.getBoundingClientRect();
+    var cv = document.getElementById('gameCanvas');
+    if (!cv) return;
+    var rect = cv.getBoundingClientRect();
     var x = e.clientX - rect.left, y = e.clientY - rect.top;
 
     for (var i = st._playerTilePositions.length - 1; i >= 0; i--) {
@@ -61,7 +62,10 @@ window.UI = (function() {
 
   // ===== 初始化 =====
   function init() {
-    canvas.addEventListener('click', handleClick);
+    var cv = document.getElementById('gameCanvas');
+    if (cv) {
+      cv.addEventListener('click', handleClick);
+    }
 
     document.getElementById('btnHu').addEventListener('click', function() {
       var st = s(); if (!st.canHu) return;

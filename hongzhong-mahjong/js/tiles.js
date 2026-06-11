@@ -18,7 +18,10 @@ window.Tiles = (function() {
     if (id === HONGZHONG_ID) return 'zhong';
     if (id >= 1 && id <= 9) return 'wan';
     if (id >= 10 && id <= 18) return 'tiao';
-    return 'tong'; // 19-27
+    if (id >= 19 && id <= 27) return 'tong';
+    if (id === 0) return 'wan';   // BUG-013: boundary case
+    if (id === 31) return 'zhong'; // BUG-014: boundary case
+    return null; // 越界
   }
 
   function tileNumber(id) {

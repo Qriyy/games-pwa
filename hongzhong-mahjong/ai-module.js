@@ -139,6 +139,7 @@ function cloneCounts(counts) {
  */
 function canWin(hand, exposedMeldCount) {
   if (exposedMeldCount === undefined) exposedMeldCount = 0;
+  if (countHongZhong(hand) === 0) return false; // 必须有红中
   var total = hand.length + exposedMeldCount * 3;
   if (total !== 14) return false;
 
@@ -779,6 +780,8 @@ function shouldHu(hand, tile) {
  * gangType: 'an_gang' | 'bu_gang' | 'ming_gang'
  */
 function shouldGang(hand, tile, gangType, difficulty) {
+  // 红中不能用来杠
+  if (tile === HONG_ZHONG) return false;
   // 暗杠、补杠：100% 执行
   if (gangType === 'an_gang' || gangType === 'bu_gang') {
     return true;
