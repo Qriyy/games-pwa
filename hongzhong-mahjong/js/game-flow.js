@@ -63,7 +63,7 @@ window.GameFlow = (function() {
     try { render(); } catch(e) { console.error('startNewGame渲染异常:', e); }
 
     if (st.dealerIdx !== 0) {
-      _setTimer(() => aiTurn(st.dealerIdx), 800);
+      _setTimer(() => aiTurn(st.dealerIdx), 1500);
     }
   }
 
@@ -147,7 +147,7 @@ window.GameFlow = (function() {
         _aiSafetyTimer = null;
         nextTurn(playerIdx);
       }
-    }, 3000);
+    }, 5000);
 
     _setTimer(() => {
       // 清除安全定时器（AI已经开始执行了）
@@ -180,7 +180,7 @@ window.GameFlow = (function() {
           const gangBase = selfGangs[0];
           performGang(playerIdx, -1, gangBase);
           st.isAfterGang = true;
-          _setTimer(() => aiTurn(playerIdx), 600);
+          _setTimer(() => aiTurn(playerIdx), 1200);
           return;
         }
 
@@ -219,7 +219,7 @@ window.GameFlow = (function() {
         console.error('AI回合异常:', err.message, err.stack);
         nextTurn(playerIdx);
       }
-    }, 500 + Math.random() * 400);
+    }, 1200 + Math.random() * 600);
   }
 
   function aiWin(playerIdx, tile, type) {
@@ -270,7 +270,7 @@ window.GameFlow = (function() {
             _setTimer(() => {
               performHu(p, tile, discardPlayer);
               endGame(p, 'dianpao', discardPlayer);
-            }, 300);
+            }, 800);
             return;
           }
         }
@@ -281,7 +281,7 @@ window.GameFlow = (function() {
         _setTimer(() => {
           performHu(aiHu, tile, discardPlayer);
           endGame(aiHu, 'dianpao', discardPlayer);
-        }, 500);
+        }, 1200);
         return;
       }
     }
@@ -310,13 +310,13 @@ window.GameFlow = (function() {
               _setTimer(() => {
                 performQiangGangHu(qg.player, qg.tile, qg.gangPlayer);
                 endGame(qg.player, 'qiangganghu', qg.gangPlayer);
-              }, 300);
+              }, 800);
             }
             // player 0: UI 已由 checkQiangGangHu 设置
             return;
           }
-          _setTimer(() => aiTurn(aiGang), 600);
-        }, 500);
+          _setTimer(() => aiTurn(aiGang), 1200);
+        }, 1000);
         return;
       }
     }
@@ -359,8 +359,8 @@ window.GameFlow = (function() {
               render();
               checkResponses(aiPeng, discarded);
             }
-          }, 500);
-        }, 500);
+          }, 1000);
+        }, 1000);
         return;
       }
     }
@@ -447,7 +447,7 @@ window.GameFlow = (function() {
             _setTimer(() => {
               performHu(p, tile, discardPlayer);
               endGame(p, 'dianpao', discardPlayer);
-            }, 400);
+            }, 1000);
             return;
           }
         }
@@ -476,8 +476,8 @@ window.GameFlow = (function() {
                 render();
                 checkResponses(p, discarded);
               }
-            }, 500);
-          }, 400);
+            }, 1000);
+          }, 1000);
           return;
         }
       }
