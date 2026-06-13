@@ -273,6 +273,29 @@ window.HuDetection = (function() {
     return tryPairThenTriplets(counts, wildCount);
   }
 
+  /**
+   * 混一色：所有牌（含副露）为同一花色 + 红中，且必须有红中
+   */
+  function checkHunyise(hand, melds) {
+    let suit = null;
+    let hasHz = false;
+    for (const t of hand) {
+      if (isHongzhong(t)) { hasHz = true; continue; }
+      const s = tileSuit(t);
+      if (suit === null) suit = s;
+      else if (s !== suit) return false;
+    }
+    for (const m of melds) {
+      for (const t of m.tiles) {
+        if (isHongzhong(t)) { hasHz = true; continue; }
+        const s = tileSuit(t);
+        if (suit === null) suit = s;
+        else if (s !== suit) return false;
+      }
+    }
+    return suit !== null && hasHz;
+  }
+
   function checkQingyise(hand, melds) {
     let suit = null;
     for (const t of hand) {
@@ -342,10 +365,23 @@ window.HuDetection = (function() {
     return results;
   }
 
+  /** 听牌检测：当前手牌能胡，或只差一张即可胡 */
+  function isTing(hand, melds) {
+    if (canHu(hand, melds).canHu) return true;
+    var allIds = [];
+    for (var i = 1; i <= 27; i++) allIds.push(i);
+    allIds.push(HONGZHONG_ID);
+    for (var j = 0; j < allIds.length; j++) {
+      var testHand = hand.concat(allIds[j]);
+      if (canHu(testHand, melds).canHu) return true;
+    }
+    return false;
+  }
+
   return {
     canHu, tryHu, tryMelds,
-    canPeng,
-    checkQidui, checkLongQidui, checkPengpenghu, checkQingyise,
+    canPeng, isTing,
+    checkQidui, checkLongQidui, checkPengpenghu, checkQingyise, checkHunyise,
     checkAllTriplets, tryPairThenTriplets,
     canGang, canSelfGang,
   };

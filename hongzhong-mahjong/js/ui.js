@@ -20,6 +20,7 @@ window.UI = (function() {
     document.getElementById('btnGang').disabled = !st.canGang;
     document.getElementById('btnPeng').disabled = !st.canPeng;
     document.getElementById('btnPass').disabled = !(st.turnPhase === 'response' && (st.canHu || st.canGang || st.canPeng));
+    document.getElementById('btnTing').disabled = !st.canTing;
   }
 
   function updateScoreBar() {
@@ -105,6 +106,7 @@ window.UI = (function() {
       setStatus('你碰了！请出牌');
       st.phase = 'playerTurn'; st.turnPhase = 'discard';
       st.canPeng = false; st.canGang = false; st.canHu = false;
+      st.canTing = HuDetection.isTing(st.hands[0], st.melds[0]);
       updateButtons(); render();
     });
 

@@ -6,8 +6,9 @@
 window.GameFlow = (function() {
   const { HONGZHONG_ID } = window.Constants;
   const { isHongzhong, tileBaseId, tileName, sortHand, buildDeck, shuffle } = window.Tiles;
-  const { canHu, canPeng, canGang, canSelfGang } = window.HuDetection;
+  const { canHu, canPeng, canGang, canSelfGang, isTing } = window.HuDetection;
   const { calcScore } = window.Scoring;
+
   const { performHu, performPeng, performGang, performQiangGangHu, checkQiangGangHu } = window.Actions;
   const { getAIDecision, shouldPeng, shouldHu } = window.AIBridge;
   const { render } = window.Renderer;
@@ -36,6 +37,7 @@ window.GameFlow = (function() {
     st.isLastTile = false;
     st.qiangGangTile = -1;
     st.qiangGangPlayer = -1;
+    st.turnCount = 1; // 庄家拿到14张 = 第1回合
 
     for (let round = 0; round < 13; round++) {
       for (let p = 0; p < 4; p++) {
@@ -69,6 +71,7 @@ window.GameFlow = (function() {
 
   function drawTileFromDeck(playerIdx) {
     const st = s();
+    st.turnCount++;
     if (st.deck.length === 0) {
       endGame(-1, 'draw');
       return;
@@ -76,9 +79,13 @@ window.GameFlow = (function() {
     const tile = st.deck.pop();
     if (st.deck.length === 0) st.isLastTile = true;
 
+    // 在加牌前检查听牌（摸牌前手牌状态）
+    var wasTing = (playerIdx === 0) && isTing(st.hands[0], st.melds[0]);
+
     st.hands[playerIdx].push(tile);
 
     if (playerIdx === 0) {
+      st.lastDrawnTile = tile;
       st.hands[0] = sortHand(st.hands[0]);
     }
 
@@ -89,6 +96,7 @@ window.GameFlow = (function() {
       }
       st.canGang = selfGangs.length > 0;
       st.canPeng = false;
+      st.canTing = wasTing || st.canHu;
       st.selectedIdx = -1;
       st.phase = 'playerTurn';
       st.turnPhase = 'discard';
@@ -114,6 +122,7 @@ window.GameFlow = (function() {
     }
     st.hands[0].splice(idx, 1);
     st.hands[0] = sortHand(st.hands[0]);
+    st.lastDrawnTile = -1;
     st.discards[0].push(tile);
     st.lastDiscard = tile;
     st.lastDiscardPlayer = 0;
@@ -121,6 +130,7 @@ window.GameFlow = (function() {
     st.canHu = false;
     st.canGang = false;
     st.canPeng = false;
+    st.canTing = false;
     window.UI.playSound('discard');
 
     try {
@@ -278,6 +288,8 @@ window.GameFlow = (function() {
       }
       const aiHu = huPlayers.find(p => p !== 0);
       if (aiHu !== undefined) {
+        st.phase = 'aiTurn'; // 阻止玩家重复出牌
+        st.pendingActions = [];
         _setTimer(() => {
           performHu(aiHu, tile, discardPlayer);
           endGame(aiHu, 'dianpao', discardPlayer);
@@ -301,6 +313,8 @@ window.GameFlow = (function() {
       }
       const aiGang = gangPlayers.find(p => p !== 0);
       if (aiGang !== undefined) {
+        st.phase = 'aiTurn';
+        st.pendingActions = [];
         _setTimer(() => {
           const result = performGang(aiGang, tile, tileBaseId(tile));
           // 抢杠胡检查
@@ -336,6 +350,8 @@ window.GameFlow = (function() {
       }
       const aiPeng = pengPlayers.find(p => p !== 0);
       if (aiPeng !== undefined) {
+        st.phase = 'aiTurn';
+        st.pendingActions = [];
         _setTimer(() => {
           performPeng(aiPeng, tile, discardPlayer);
           _setTimer(() => {
@@ -490,6 +506,7 @@ window.GameFlow = (function() {
   function endGame(winner, type, dianpaoPlayer) {
     const st = s();
     st.phase = 'gameOver';
+    st.winner = winner;
 
     const modal = document.getElementById('result-modal');
     const title = document.getElementById('result-title');
@@ -497,10 +514,13 @@ window.GameFlow = (function() {
     const score = document.getElementById('result-score');
 
     if (type === 'draw') {
+      // 荒庄不换庄家，保留当前 dealerIdx
       title.textContent = '流局';
       detail.textContent = '牌墙已摸完，无人胡牌';
       score.textContent = '本局不计分';
     } else {
+      // 胡牌者坐庄
+      s().dealerIdx = winner;
       const isPlayerWin = (winner === 0);
       const { fan, typeName, points } = calcScore(st.hands[winner], st.melds[winner], type);
 

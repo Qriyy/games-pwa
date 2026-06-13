@@ -19,7 +19,7 @@ window.GameState = (function() {
       lastDiscard: -1,
       lastDiscardPlayer: -1,
       pendingActions: [],
-      canHu: false, canGang: false, canPeng: false,
+      canHu: false, canGang: false, canPeng: false, canTing: false,
       turnPhase: 'draw',
       winner: -1,
       winType: '',
@@ -33,6 +33,8 @@ window.GameState = (function() {
       dealerIdx: 0,
       qiangGangTile: -1,
       qiangGangPlayer: -1,
+      turnCount: 0,
+      lastDrawnTile: -1,
     };
   }
 

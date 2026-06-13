@@ -174,17 +174,17 @@ window.Renderer = (function () {
     var color = SUIT_COLORS[suit] || '#333';
 
     /* ---- 角标数字 ---- */
-    var fs1 = Math.max(6, Math.floor(h * 0.16));
-    text('' + num, x + w * 0.14, dy + h * 0.06, 'left', 'top',
+    var fs1 = Math.max(5, Math.floor(h * 0.14));
+    text('' + num, x + w * 0.14, dy + h * 0.05, 'left', 'top',
          'bold ' + fs1 + 'px "Microsoft YaHei",sans-serif', color);
-    text('' + num, x + w * 0.86, dy + h * 0.94, 'right', 'bottom',
+    text('' + num, x + w * 0.86, dy + h * 0.95, 'right', 'bottom',
          'bold ' + fs1 + 'px "Microsoft YaHei",sans-serif', color);
 
     /* ---- 花色字 ---- */
-    var fsHanzi = Math.max(5, Math.floor(h * 0.10));
+    var fsHanzi = Math.max(4, Math.floor(h * 0.09));
     var suitChar = suit === 'wan' ? '万' : suit === 'tiao' ? '条' : '筒';
-    text(suitChar, x + w * 0.86, dy + h * 0.06, 'right', 'top',
-         'bold ' + fsHanzi + 'px "Microsoft YaHei",sans-serif', color);
+    text(suitChar, x + w * 0.86, dy + h * 0.16, 'right', 'top',
+         fsHanzi + 'px "Microsoft YaHei",sans-serif', color);
 
     /* ---- 中心图案 ---- */
     var fs2 = Math.max(10, Math.floor(h * 0.32));
@@ -221,14 +221,15 @@ window.Renderer = (function () {
       }
     } else if (suit === 'tong') {
       var dots = TONG_DOTS[num];
-      var dotR = Math.max(1.8, Math.min(w, h) * 0.06);
-      var unit = Math.min(w, h) * 0.11;
+      var dotR = Math.max(1.5, Math.min(w, h) * 0.05);
+      var unit = Math.min(w, h) * 0.10;
+      var cy2 = cy + Math.max(1, h * 0.03);
       if (dots) {
         ctx.strokeStyle = color;
         ctx.fillStyle = color;
         for (var d = 0; d < dots.length; d++) {
           var ddx = cx + dots[d][1] * unit;
-          var ddy = cy + dots[d][0] * unit;
+          var ddy = cy2 + dots[d][0] * unit;
           ctx.lineWidth = Math.max(0.6, dotR * 0.3);
           ctx.beginPath();
           ctx.arc(ddx, ddy, dotR, 0, Math.PI * 2);
@@ -592,6 +593,15 @@ window.Renderer = (function () {
         h: th + yOff,
         idx: i
       });
+    }
+
+    // 显示刚摸到的牌（最后一张牌的右上方）
+    if (st.lastDrawnTile > 0 && st.phase === 'playerTurn' && st.turnPhase === 'discard') {
+      var dtw = tw * 1.05, dth = th * 1.05;
+      var lastX = sx + (n - 1) * pitch;
+      var dtX = Math.min(lastX + tw * 0.3, W - dtw - 4);
+      var dtY = handY - dth - th * 0.15;
+      drawTile(dtX, dtY, dtw, dth, st.lastDrawnTile, true, false, true);
     }
 
     // 副露牌放在弃牌上方（靠近桌面中心）

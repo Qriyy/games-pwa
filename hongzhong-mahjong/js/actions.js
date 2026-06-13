@@ -7,7 +7,6 @@ window.Actions = (function() {
   const { isHongzhong, tileBaseId, tileName, sortHand } = window.Tiles;
   const { canHu } = window.HuDetection;
 
-  // 引用全局 state
   function s() { return window.state; }
 
   function performHu(playerIdx, tile, fromPlayer) {
